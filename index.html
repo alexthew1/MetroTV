@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+    <title>MetroTV</title>
+    <style>
+        :root {
+            --accent: #00aba9;
+            --bg: #000;
+            --tile: #1a1a1a;
+            --ch-w: 160px;
+            --row-h: 85px;
+            --min-w: 6px;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; scrollbar-width: none; -ms-overflow-style: none; }
+        *::-webkit-scrollbar { display: none; }
+
+        body, html { 
+            margin: 0; padding: 0; height: 100vh; width: 100vw;
+            background: var(--bg); color: white;
+            font-family: 'Segoe UI', 'Open Sans', sans-serif; overflow: hidden;
+            display: flex; flex-direction: column;
+        }
+
+        /* --- LOADING OVERLAY --- */
+        #loading-overlay {
+            position: fixed; inset: 0; background: #000; z-index: 9999;
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            background-image: linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+            background-size: 80px 80px;
+        }
+        .load-box { width: 85%; max-width: 500px; }
+        .load-text { font-size: 1.8rem; font-weight: 100; margin-bottom: 20px; text-transform: uppercase; }
+        .load-bar-bg { width: 100%; height: 50px; background: #0a1128; position: relative; }
+        .load-bar-fill { width: 0%; height: 100%; background: var(--accent); transition: width 0.5s ease; }
+
+        /* --- PIVOT BAR (OFFICIAL METRO STYLE) --- */
+        .nav-pivot { 
+            padding: 30px 40px 10px; /* More breathing room */
+            display: flex; 
+            gap: 35px; 
+            background: #000; 
+            z-index: 100; 
+            flex-shrink: 0; 
+            align-items: baseline; /* Align text properly */
+        }
+        .nav-pivot span { 
+            font-size: 2.8rem; /* Large, header-like text */
+            color: #fff;
+            opacity: 0.4; /* Dimmed inactive state */
+            cursor: pointer; 
+            text-transform: lowercase; 
+            font-weight: 100; /* Very light weight (Segoe UI Light style) */
+            transition: opacity 0.2s ease-in-out; 
+            letter-spacing: -0.02em;
+        }
+        .nav-pivot span:hover {
+            opacity: 0.7;
+        }
+        .nav-pivot span.active { 
+            opacity: 1; /* Bright white active state */
+            font-weight: 300; /* Slightly heavier than inactive, but still light */
+        }
+
+        /* --- INFO AREA --- */
+        #info-area { 
+            height: 180px; display: flex; padding: 10px 30px; 
+            background: #000; border-bottom: 1px solid #111; 
+            position: relative; flex-shrink: 0; 
+        }
+        #meta-content { flex: 1; padding-right: 330px; overflow: hidden; }
+        #meta-title { font-size: 2.2rem; margin: 0; color: var(--accent); font-weight: 100; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #meta-sub { font-size: 1.1rem; color: #888; margin: 5px 0; }
+        #meta-desc { font-size: 0.95rem; color: #bbb; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+        /* --- PLAYER --- */
+        #pip-box { 
+            position: fixed; top: 0; right: 0; width: 320px; height: 180px; 
+            background: #000; cursor: pointer; z-index: 5000; 
+            border-left: 1px solid #111; border-bottom: 1px solid #111; 
+            overflow: hidden; display: none; 
+        }
+        #pip-box.expanded { width: 100vw; height: 100vh; z-index: 5000; border: none; cursor: default; }
+        video { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+
+        #fs-overlay { position: absolute; top: 40px; left: 40px; display: flex; align-items: center; gap: 20px; z-index: 5002; opacity: 0; transition: 0.5s; pointer-events: none; }
+        #fs-logo { height: 65px; filter: drop-shadow(0 0 10px #000); }
+        #fs-ch-name { font-size: 2.2rem; font-weight: 300; text-shadow: 2px 2px 4px #000; }
+
+        .player-controls { 
+            position: absolute; bottom: 0; left: 0; right: 0; height: 160px; 
+            background: linear-gradient(transparent, rgba(0,0,0,0.95)); 
+            display: none; flex-direction: column; align-items: center; justify-content: center; 
+            z-index: 5001; opacity: 0; transition: 0.5s; 
+        }
+        #progress-container { width: 85%; height: 6px; background: rgba(255,255,255,0.2); margin-bottom: 25px; }
+        #progress-bar { height: 100%; background: var(--accent); width: 0%; }
+        #pip-box.expanded .player-controls { display: flex; }
+        #pip-box.expanded.ui-active .player-controls, #pip-box.expanded.ui-active #fs-overlay { opacity: 1; }
+
+        /* --- GRID ENGINE --- */
+        .guide-root { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+        
+        .time-header { 
+            display: grid; margin-left: var(--ch-w); height: 40px; 
+            background: #000; overflow: hidden; flex-shrink: 0; 
+            border-bottom: 1px solid #111; 
+            position: relative; z-index: 60; 
+            grid-template-columns: repeat(1440, var(--min-w)); 
+        }
+        .time-slot { 
+            grid-column: span 30; padding: 10px; color: #777; font-size: 0.85rem; 
+            border-left: 1px solid #111; flex-shrink: 0; white-space: nowrap; overflow: hidden;
+        }
+        
+        .grid-container { flex: 1; display: flex; overflow: auto; background: #000; scroll-behavior: smooth; position: relative; }
+        
+        .channel-list { 
+            width: var(--ch-w); min-width: var(--ch-w); position: sticky; left: 0; 
+            background: #000; z-index: 60; 
+            flex-shrink: 0; border-right: 1px solid #111; 
+        }
+        .ch-item { 
+            height: var(--row-h); display: flex; align-items: center; padding: 10px; 
+            cursor: pointer; background: #000; border-bottom: 1px solid #111; 
+        }
+        .ch-item:hover { background: #1a1a1a; }
+        .ch-item.selected { background: #2a2a2a; border-left: 4px solid var(--accent); }
+        .ch-item img { max-width: 45px; max-height: 40px; margin-right: 12px; flex-shrink: 0; }
+        .ch-item span { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px; }
+
+        .program-matrix { display: grid; grid-auto-rows: var(--row-h); gap: 0; background: #000; width: max-content; }
+        
+        /* --- OPTIMIZED TILE --- */
+        .prog-node { 
+            background: var(--tile); padding: 10px; cursor: pointer; 
+            border: 2px solid #000; overflow: hidden; transition: 0.1s; box-sizing: border-box; 
+            position: relative; z-index: 1; font-size: 0.85rem; display: flex; align-items: center; 
+        }
+        .prog-node strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; width: 100%; }
+        .prog-node:focus { border-color: white; background: var(--accent); outline: none; z-index: 10; }
+
+        /* --- CHANNELS VIEW --- */
+        #channels-view { display: none; flex: 1; overflow-y: auto; padding: 40px; flex-direction: column; }
+        .grid-section-title { 
+            font-size: 1.8rem; font-weight: 100; margin: 20px auto 10px auto; color: #fff; 
+            border-bottom: 2px solid #333; padding-bottom: 5px; text-align: left; width: 100%; max-width: 1000px;
+        }
+        .channel-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 0 auto 50px auto; width: 100%; max-width: 1000px; }
+        .channel-tile { 
+            background: var(--tile); height: 120px; display: flex; flex-direction: column; 
+            align-items: center; justify-content: center; cursor: pointer; 
+            border: 2px solid transparent; transition: 0.2s; overflow: hidden;
+        }
+        .channel-tile:hover { border-color: var(--accent); background: #222; }
+        .channel-tile img { max-height: 50px; margin-bottom: 10px; transform: scale(0.7); }
+        .channel-tile span { font-size: 1rem; font-weight: 600; text-align: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 15ch; }
+
+        /* --- RIBBON --- */
+        .ribbon-bar { height: 70px; background: #111; border-top: 1px solid #333; display: none; justify-content: center; align-items: center; gap: 60px; z-index: 200; flex-shrink: 0; }
+        .ribbon-btn { display: flex; flex-direction: column; align-items: center; opacity: 0.7; cursor: pointer; transition: 0.2s; }
+        .ribbon-btn:hover { opacity: 1; color: var(--accent); }
+        .ribbon-icon { width: 30px; height: 30px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; }
+        .ribbon-btn span { font-size: 0.8rem; text-transform: lowercase; }
+
+        /* --- SETTINGS PLAYLIST CARDS --- */
+        .playlist-card { 
+            background: #111; padding: 20px; margin-bottom: 12px; 
+            border-left: 6px solid #333; 
+            display: flex; justify-content: space-between; align-items: center; 
+            cursor: pointer; transition: 0.2s;
+        }
+        .playlist-card:hover { background: #1a1a1a; }
+        .playlist-card.active-pl { border-left-color: var(--accent); background: #222; }
+        .playlist-card.active-pl span { color: var(--accent); font-weight: 600; }
+        .file-btn { display: inline-block; background: #333; padding: 8px 15px; margin-right: 10px; font-size: 0.9rem; cursor: pointer; }
+
+        .wp-circle { width: 65px; height: 65px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: white; }
+        .wp-circle svg { width: 30px; height: 30px; fill: currentColor; }
+        #modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.96); z-index: 6000; flex-direction: column; align-items: center; justify-content: center; }
+        .btn-metro { padding: 12px 30px; background: var(--accent); border: none; color: white; cursor: pointer; font-weight: 600; text-transform: lowercase; }
+        .swatch { width: 40px; height: 40px; cursor: pointer; display: inline-block; margin-right: 12px; border: 2px solid transparent; }
+        .playlist-card { background: #111; padding: 20px; margin-bottom: 12px; border-left: 6px solid var(--accent); display: flex; justify-content: space-between; align-items: center; }
+        
+        #empty-state { flex: 1; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <div class="load-box">
+            <div class="load-text">LOADING PLAYLIST...</div>
+            <div class="load-bar-bg"><div id="load-progress" class="load-bar-fill"></div></div>
+        </div>
+    </div>
+
+    <div class="nav-pivot">
+        <span id="tab-g" class="active" onclick="view('guide')">guide</span>
+        <span id="tab-c" onclick="view('channels')">channels</span>
+        <span id="tab-s" onclick="view('settings')">settings</span>
+    </div>
+
+    <div id="info-area">
+        <div id="meta-content">
+            <h1 id="meta-title">Welcome</h1>
+            <p id="meta-sub">MetroTV</p>
+            <p id="meta-desc">Connect a playlist to get started.</p>
+        </div>
+    </div>
+
+    <div id="pip-box" onclick="goFull()" onmousemove="handlePlayerMouse()">
+        <div id="fs-overlay"><img id="fs-logo" src=""><span id="fs-ch-name"></span></div>
+        <video id="vid" autoplay muted></video>
+        <div class="player-controls">
+            <div id="progress-container"><div id="progress-bar"></div></div>
+            <div style="display:flex; gap:40px;">
+                <div class="wp-circle" onclick="togglePlay(event)"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+                <div class="wp-circle" onclick="toggleMute(event)"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg></div>
+                <div class="wp-circle" onclick="minimizePlayer(event)"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="empty-state">
+        <h2 style="font-weight:100; font-size:3rem; color:var(--accent);">no playlists</h2>
+        <button class="btn-metro" onclick="view('settings')">add a playlist</button>
+    </div>
+
+    <div id="guide-view" class="guide-root">
+        <div class="time-header" id="timer"></div>
+        <div class="grid-container" id="gridCont">
+            <div class="channel-list" id="chList"></div>
+            <div class="program-matrix" id="matrix"></div>
+        </div>
+    </div>
+
+    <div id="channels-view">
+        <div id="fav-section" style="display:none">
+            <div class="grid-section-title">favorites</div>
+            <div class="channel-grid" id="fav-grid"></div>
+        </div>
+        <div class="grid-section-title">all channels</div>
+        <div class="channel-grid" id="all-grid"></div>
+    </div>
+
+    <div class="ribbon-bar" id="ribbon">
+        <div class="ribbon-btn" onclick="ribbonAction('info')"><div class="ribbon-icon">i</div><span>info</span></div>
+        <div class="ribbon-btn" onclick="ribbonAction('refresh')"><div class="ribbon-icon">↻</div><span>refresh</span></div>
+        <div class="ribbon-btn" onclick="ribbonAction('fav')"><div class="ribbon-icon">★</div><span>favorite</span></div>
+    </div>
+
+    <div id="settings-view" style="display:none; padding:40px; overflow-y:auto;">
+        <h2 style="font-weight:100; color:var(--accent);">appearance</h2>
+        <div id="swatches" style="margin-bottom:40px"></div>
+        
+        <h2 style="font-weight:100; color:var(--accent);">data management</h2>
+        <div style="margin-bottom:40px">
+            <div class="file-btn" onclick="exportData()">Backup Config</div>
+            <div class="file-btn" onclick="document.getElementById('file-in').click()">Restore Config</div>
+            <input type="file" id="file-in" style="display:none" onchange="importData(this)">
+        </div>
+
+        <h2 style="font-weight:100; color:var(--accent);">add playlist</h2>
+        <input type="text" id="pl-name" style="background:#111; border:2px solid #333; color:white; padding:12px; width:100%; max-width:500px; display:block; margin-bottom:10px" placeholder="Playlist Name (e.g. Sports)">
+        <input type="text" id="m3u-in" style="background:#111; border:2px solid #333; color:white; padding:12px; width:100%; max-width:500px; display:block; margin-bottom:10px" placeholder="M3U URL">
+        <input type="text" id="xml-in" style="background:#111; border:2px solid #333; color:white; padding:12px; width:100%; max-width:500px; display:block; margin-bottom:10px" placeholder="XML EPG URL">
+        <input type="number" id="epg-shift" style="background:#111; border:2px solid #333; color:white; padding:12px; width:100%; max-width:500px; display:block; margin-bottom:15px" placeholder="EPG Shift (Hours)">
+        <button onclick="addPlaylist()" class="btn-metro">ADD PLAYLIST</button>
+        
+        <h3 style="font-weight:100; color:var(--accent); margin-top:40px;">saved playlists</h3>
+        <p style="color:#777; font-size:0.9rem;">click a playlist to load it</p>
+        <div id="saved-lists" style="margin-top:20px; max-width:600px;"></div>
+    </div>
+
+    <div id="modal-overlay">
+        <h1 id="modal-title" style="font-weight:100; font-size:2.5rem; text-align:center;">Program</h1>
+        <div style="display:flex; gap:45px; margin-top:40px;">
+            <div onclick="doAct('watch')" class="wp-circle"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+            <div onclick="doAct('close')" class="wp-circle"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></div>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = ['#00aba9', '#a4c400', '#1ba1e2', '#6a00ff', '#d80073', '#e51400', '#fa6800', '#f0a30a'];
+        let state = {
+            channels: [], epg: {}, 
+            favorites: JSON.parse(localStorage.getItem('met_favs') || '[]'),
+            playlists: JSON.parse(localStorage.getItem('met_v34') || '[]'),
+            activeIdx: parseInt(localStorage.getItem('met_act_idx_v34') || '0'),
+            accent: localStorage.getItem('met_ac_v34') || '#00aba9',
+            epgShift: 0,
+            sel: null, activeCh: null, lastBaseTime: 0
+        };
+        let hlsApi = null;
+
+        function init() {
+            applyTheme(state.accent);
+            renderSwatches();
+            renderSaved();
+            checkPlaylists();
+            
+            document.getElementById('gridCont').onscroll = (e) => { 
+                document.getElementById('timer').scrollLeft = e.target.scrollLeft; 
+            };
+
+            document.addEventListener('keydown', (e) => {
+                const pip = document.getElementById('pip-box');
+                if (pip.classList.contains('expanded') && state.sel) {
+                    if (e.key === 'ArrowDown') switchChannel('next');
+                    if (e.key === 'ArrowUp') switchChannel('prev');
+                }
+            });
+
+            setInterval(() => {
+                const now = new Date();
+                const progress = ((now.getMinutes() % 30) / 30) * 100;
+                document.getElementById('progress-bar').style.width = progress + "%";
+                const currentBase = getBaseTime();
+                if(currentBase !== state.lastBaseTime && state.channels.length > 0) {
+                    renderGrid(); 
+                }
+            }, 5000);
+        }
+
+        function getBaseTime() {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() >= 30 ? 30 : 0);
+            now.setSeconds(0); now.setMilliseconds(0);
+            return now.getTime();
+        }
+
+        function switchChannel(dir) {
+            const currentIdx = state.channels.findIndex(ch => ch.u === state.sel.u);
+            if (currentIdx === -1) return;
+            let newIdx = dir === 'next' ? (currentIdx + 1) : (currentIdx - 1 + state.channels.length);
+            newIdx %= state.channels.length;
+            playChannel(state.channels[newIdx]);
+        }
+
+        function playChannel(obj) {
+            const chName = obj.chN || obj.n || obj.t || "Unknown Channel";
+            
+            state.sel = { 
+                t: obj.t || chName, 
+                u: obj.u, 
+                l: obj.l, 
+                chN: chName, 
+                d: obj.d || "Live Broadcast" 
+            };
+
+            document.getElementById('fs-logo').src = obj.l || '';
+            document.getElementById('fs-ch-name').innerText = chName;
+            
+            const v = document.getElementById('vid');
+            if(Hls.isSupported()){ 
+                if(hlsApi) hlsApi.destroy();
+                hlsApi = new Hls(); hlsApi.loadSource(obj.u); hlsApi.attachMedia(v); v.play();
+            } else { v.src = obj.u; v.play(); }
+            handlePlayerMouse();
+        }
+
+        function checkPlaylists() {
+            if(state.playlists.length > 0) {
+                if(state.activeIdx >= state.playlists.length) state.activeIdx = 0;
+                document.getElementById('empty-state').style.display = 'none';
+                const p = state.playlists[state.activeIdx];
+                state.epgShift = p.shift || 0;
+                load(p.m, p.x);
+            } else { 
+                view('guide'); 
+            }
+        }
+
+        function showLoading(show) {
+            const el = document.getElementById('loading-overlay');
+            const bar = document.getElementById('load-progress');
+            if(show) { el.style.display = 'flex'; setTimeout(() => bar.style.width = '70%', 50); }
+            else { bar.style.width = '100%'; setTimeout(() => { el.style.display = 'none'; bar.style.width = '0%'; }, 500); }
+        }
+
+        async function load(m, x) {
+            showLoading(true);
+            try {
+                const mText = await fetch(m).then(r => r.text());
+                state.channels = [];
+                mText.split('#EXTINF').forEach(chunk => {
+                    if(!chunk.includes('http')) return;
+                    state.channels.push({
+                        n: chunk.split(',')[1]?.split('\n')[0].trim(),
+                        u: chunk.split('\n').find(l => l.startsWith('http'))?.trim(),
+                        l: chunk.match(/tvg-logo="([^"]+)"/)?.[1],
+                        id: chunk.match(/tvg-id="([^"]+)"/)?.[1]
+                    });
+                });
+                if(x) await fetchEPG(x);
+                renderGrid();
+                renderChannelGrids();
+                view('guide');
+            } catch(e) { console.error("Load Failed"); }
+            showLoading(false);
+        }
+
+        function parseEPGDate(tStr) {
+            if(!tStr || tStr.length < 12) return null;
+            const y = parseInt(tStr.substring(0,4));
+            const m = parseInt(tStr.substring(4,6)) - 1;
+            const d = parseInt(tStr.substring(6,8));
+            const h = parseInt(tStr.substring(8,10));
+            const min = parseInt(tStr.substring(10,12));
+            return new Date(y, m, d, h, min).getTime();
+        }
+
+        async function fetchEPG(url) {
+            try {
+                const txt = await fetch(url).then(r => r.text());
+                const xml = new DOMParser().parseFromString(txt, "text/xml");
+                const progs = xml.getElementsByTagName('programme');
+                state.epg = {};
+                const shiftMs = state.epgShift * 3600000;
+                for(let p of progs) {
+                    const cid = p.getAttribute('channel');
+                    if(!state.epg[cid]) state.epg[cid] = [];
+                    const startTs = parseEPGDate(p.getAttribute('start'));
+                    const stopTs = parseEPGDate(p.getAttribute('stop'));
+                    if(startTs) {
+                        state.epg[cid].push({
+                            t: p.getElementsByTagName('title')[0]?.textContent,
+                            d: p.getElementsByTagName('desc')[0]?.textContent || "No description.",
+                            start: startTs + shiftMs, 
+                            stop: (stopTs || (startTs + 3600000)) + shiftMs
+                        });
+                    }
+                }
+            } catch(e) {}
+        }
+
+        function renderGrid() {
+            const list = document.getElementById('chList');
+            const matrix = document.getElementById('matrix');
+            const timer = document.getElementById('timer');
+            list.innerHTML = ''; matrix.innerHTML = ''; timer.innerHTML = '';
+            
+            const baseTime = getBaseTime();
+            state.lastBaseTime = baseTime;
+            const minutesToRender = 1440; 
+            matrix.style.gridTemplateColumns = `repeat(${minutesToRender}, var(--min-w))`;
+            
+            for(let i=0; i<48; i++) {
+                const sTime = new Date(baseTime + (i * 30 * 60000));
+                const s = document.createElement('div'); s.className = 'time-slot';
+                s.innerText = `${sTime.getHours()}:${sTime.getMinutes() === 0 ? '00' : '30'}`; 
+                timer.appendChild(s);
+            }
+
+            state.channels.forEach((ch, idx) => {
+                const cDiv = document.createElement('div');
+                cDiv.className = 'ch-item';
+                cDiv.innerHTML = (ch.l ? `<img src="${ch.l}">` : '') + `<span>${ch.n}</span>`;
+                cDiv.onclick = () => {
+                    document.querySelectorAll('.ch-item, .prog-node').forEach(x => x.classList.remove('selected'));
+                    cDiv.classList.add('selected');
+                    state.activeCh = { n: ch.n, u: ch.u, l: ch.l };
+                    state.sel = { t: ch.n, u: ch.u, l: ch.l, chN: ch.n, d: "Channel Selection" }; 
+                };
+                cDiv.ondblclick = () => openModal(ch.n, "Live Stream", ch.u, ch.n, ch.l);
+                list.appendChild(cDiv);
+
+                const progs = state.epg[ch.id] || state.epg[ch.n] || [];
+                if(progs.length === 0) {
+                    drawTile("Live Stream", "Direct Broadcast", 1, 1440, idx+1, ch.u, ch.n, ch.l);
+                } else {
+                    progs.forEach(p => {
+                        if (p.stop <= baseTime) return;
+                        const startDiff = (p.start - baseTime) / 60000;
+                        const duration = (p.stop - p.start) / 60000;
+                        let colStart = Math.floor(startDiff) + 1;
+                        let span = Math.ceil(duration);
+                        if (colStart < 1) { span = span + (colStart - 1); colStart = 1; }
+                        if (span > 0 && colStart <= 1440) {
+                            drawTile(p.t, p.d, colStart, span, idx+1, ch.u, ch.n, ch.l);
+                        }
+                    });
+                }
+            });
+        }
+
+        function drawTile(t, d, col, span, row, u, chN, logo) {
+            const el = document.createElement('div');
+            el.className = 'prog-node'; el.tabIndex = 0;
+            el.style.gridColumn = `${col} / span ${span}`; 
+            el.style.gridRow = row;
+            el.innerHTML = `<strong>${t}</strong>`;
+            el.onclick = () => selectItem(t, u, logo, d, chN, el);
+            el.ondblclick = () => openModal(t, d, u, chN, logo);
+            document.getElementById('matrix').appendChild(el);
+        }
+
+        function selectItem(t, u, l, d, chN, el) {
+            document.getElementById('meta-title').innerText = t;
+            document.getElementById('meta-sub').innerText = chN;
+            document.getElementById('meta-desc').innerText = d;
+            state.sel = { t, u, l, d, chN };
+            state.activeCh = { n: chN, u: u, l: l };
+            document.querySelectorAll('.ch-item, .prog-node').forEach(x => x.classList.remove('selected'));
+            if(el) el.classList.add('selected');
+        }
+
+        function ribbonAction(act) {
+            if(act === 'info' && state.sel) alert(`${state.sel.t}\n${state.sel.chN}\n\n${state.sel.d}`);
+            if(act === 'refresh' && state.playlists[0]) load(state.playlists[0].m, state.playlists[0].x);
+            if(act === 'fav' && state.activeCh) toggleFavorite(state.activeCh);
+        }
+
+        function toggleFavorite(ch) {
+            const idx = state.favorites.findIndex(f => f.n === ch.n);
+            if(idx > -1) { state.favorites.splice(idx, 1); }
+            else { state.favorites.push(ch); }
+            localStorage.setItem('met_favs', JSON.stringify(state.favorites));
+            renderChannelGrids();
+        }
+
+        function renderChannelGrids() {
+            const favGrid = document.getElementById('fav-grid');
+            const allGrid = document.getElementById('all-grid');
+            favGrid.innerHTML = ''; allGrid.innerHTML = '';
+            document.getElementById('fav-section').style.display = state.favorites.length > 0 ? 'block' : 'none';
+            state.favorites.forEach(ch => { favGrid.appendChild(createChannelTile(ch)); });
+            state.channels.forEach(ch => {
+                if(!state.favorites.find(f => f.n === ch.n)) allGrid.appendChild(createChannelTile(ch));
+            });
+        }
+
+        function createChannelTile(ch) {
+            const d = document.createElement('div');
+            d.className = 'channel-tile';
+            d.innerHTML = (ch.l ? `<img src="${ch.l}">` : '') + `<span>${ch.n}</span>`;
+            d.onclick = () => {
+                playChannel(ch);
+                const pip = document.getElementById('pip-box');
+                pip.style.display = 'block';
+                pip.classList.add('expanded');
+                handlePlayerMouse();
+            };
+            return d;
+        }
+
+        function openModal(t, d, u, chN, logo) {
+            state.sel = { t, u, l: logo, d, chN };
+            document.getElementById('modal-title').innerText = t;
+            document.getElementById('modal-overlay').style.display = 'flex';
+        }
+
+        function doAct(type) {
+            document.getElementById('modal-overlay').style.display = 'none';
+            if(type === 'watch' && state.sel) {
+                const pip = document.getElementById('pip-box');
+                pip.style.display = 'block';
+                pip.classList.add('expanded'); 
+                playChannel(state.sel);
+                handlePlayerMouse();
+            }
+        }
+
+        function goFull() {
+            const pip = document.getElementById('pip-box');
+            if(!pip.classList.contains('expanded')) {
+                pip.classList.add('expanded');
+                if(state.sel) {
+                    document.getElementById('fs-logo').src = state.sel.l || '';
+                    document.getElementById('fs-ch-name').innerText = state.sel.chN || state.sel.t || '';
+                }
+                handlePlayerMouse();
+            }
+        }
+
+        function handlePlayerMouse() {
+            const pip = document.getElementById('pip-box');
+            if(!pip.classList.contains('expanded')) return;
+            pip.classList.add('ui-active');
+            clearTimeout(state.uiTimer);
+            state.uiTimer = setTimeout(() => pip.classList.remove('ui-active'), 3000);
+        }
+
+        function minimizePlayer(e) { 
+            e.stopPropagation(); 
+            const pip = document.getElementById('pip-box');
+            const inChannels = document.getElementById('channels-view').style.display === 'flex';
+            if(inChannels) {
+                pip.style.display = 'none';
+                pip.classList.remove('expanded');
+                const v = document.getElementById('vid');
+                v.pause();
+                v.src = "";
+            } else {
+                pip.classList.remove('expanded', 'ui-active');
+            }
+        }
+        function togglePlay(e) { e.stopPropagation(); const v = document.getElementById('vid'); v.paused ? v.play() : v.pause(); }
+        function toggleMute(e) { e.stopPropagation(); const v = document.getElementById('vid'); v.muted = !v.muted; }
+
+        function view(v) {
+            const isG = v === 'guide';
+            const isC = v === 'channels';
+            const isS = v === 'settings';
+            const hasP = state.playlists.length > 0;
+
+            document.getElementById('guide-view').style.display = (isG && hasP) ? 'flex' : 'none';
+            document.getElementById('channels-view').style.display = (isC && hasP) ? 'flex' : 'none';
+            document.getElementById('settings-view').style.display = isS ? 'block' : 'none';
+            document.getElementById('empty-state').style.display = (!hasP && !isS) ? 'flex' : 'none';
+            document.getElementById('ribbon').style.display = (isG && hasP) ? 'flex' : 'none';
+            document.getElementById('info-area').style.display = (isG && hasP) ? 'flex' : 'none';
+            
+            document.getElementById('tab-g').className = isG ? 'active' : '';
+            document.getElementById('tab-c').className = isC ? 'active' : '';
+            document.getElementById('tab-s').className = isS ? 'active' : '';
+
+            const pip = document.getElementById('pip-box');
+            if(isC || isS) {
+                if(!pip.classList.contains('expanded')) pip.style.display = 'none';
+            } else if (isG && state.sel && hasP) {
+                pip.style.display = 'block';
+            }
+        }
+
+        function addPlaylist() {
+            const nameIn = document.getElementById('pl-name');
+            const mIn = document.getElementById('m3u-in');
+            const xIn = document.getElementById('xml-in');
+            const sIn = document.getElementById('epg-shift');
+
+            const m = mIn.value.trim();
+            if(!m) { alert("M3U URL is required"); return; }
+
+            const name = nameIn.value.trim() || "Playlist " + (state.playlists.length + 1);
+            const x = xIn.value.trim();
+            const shift = parseFloat(sIn.value || '0');
+            
+            const newPl = { name, m, x, shift };
+            state.playlists.push(newPl);
+            state.activeIdx = state.playlists.length - 1;
+            
+            saveState();
+            renderSaved();
+            checkPlaylists();
+            view('guide');
+
+            nameIn.value = ''; mIn.value = ''; xIn.value = ''; sIn.value = '';
+        }
+
+        function setActivePlaylist(idx) {
+            state.activeIdx = idx;
+            saveState();
+            checkPlaylists();
+            renderSaved();
+        }
+
+        function deletePlaylist(idx, e) {
+            e.stopPropagation();
+            state.playlists.splice(idx, 1);
+            if(state.activeIdx >= state.playlists.length) state.activeIdx = Math.max(0, state.playlists.length - 1);
+            saveState();
+            renderSaved();
+            if(state.playlists.length === 0) {
+                document.getElementById('empty-state').style.display = 'flex';
+                document.getElementById('guide-view').style.display = 'none';
+            } else { checkPlaylists(); }
+        }
+
+        function saveState() {
+            localStorage.setItem('met_v34', JSON.stringify(state.playlists));
+            localStorage.setItem('met_act_idx_v34', state.activeIdx);
+        }
+
+        function exportData() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
+            const dlAnchorElem = document.createElement('a');
+            dlAnchorElem.setAttribute("href", dataStr);
+            dlAnchorElem.setAttribute("download", "metrotv_backup.json");
+            dlAnchorElem.click();
+        }
+
+        function importData(input) {
+            const file = input.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const loaded = JSON.parse(e.target.result);
+                    state.playlists = loaded.playlists || [];
+                    state.favorites = loaded.favorites || [];
+                    state.activeIdx = loaded.activeIdx || 0;
+                    state.accent = loaded.accent || '#00aba9';
+                    
+                    localStorage.setItem('met_v34', JSON.stringify(state.playlists));
+                    localStorage.setItem('met_favs', JSON.stringify(state.favorites));
+                    localStorage.setItem('met_act_idx_v34', state.activeIdx);
+                    localStorage.setItem('met_ac_v34', state.accent);
+                    
+                    alert("Config Restored!");
+                    location.reload();
+                } catch(err) { alert("Invalid Backup File"); }
+            };
+            reader.readAsText(file);
+        }
+
+        function applyTheme(c) { state.accent = c; document.documentElement.style.setProperty('--accent', c); localStorage.setItem('met_ac_v34', c); }
+        function renderSwatches() {
+            const s = document.getElementById('swatches');
+            COLORS.forEach(c => {
+                const d = document.createElement('div'); d.className = 'swatch'; d.style.background = c;
+                d.onclick = () => applyTheme(c); s.appendChild(d);
+            });
+        }
+        function renderSaved() {
+            const cont = document.getElementById('saved-lists');
+            cont.innerHTML = '';
+            state.playlists.forEach((p, i) => {
+                const isActive = i === state.activeIdx;
+                const d = document.createElement('div'); 
+                d.className = `playlist-card ${isActive ? 'active-pl' : ''}`;
+                d.onclick = () => setActivePlaylist(i);
+                d.innerHTML = `<span>${p.name || 'Playlist ' + (i+1)}</span>
+                <button style="background:#b00; border:none; color:white; padding:8px 15px; cursor:pointer; font-weight:bold" onclick="deletePlaylist(${i}, event)">DEL</button>`;
+                cont.appendChild(d);
+            });
+        }
+
+        init();
+    </script>
+</body>
+</html>
