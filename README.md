@@ -21,6 +21,3 @@ To get started, **download the latest release from the [Releases](https://github
 
 ---
 
-## License
-
-MIT
