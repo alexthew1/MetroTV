@@ -13,10 +13,10 @@ MetroTV is a cross-platform IPTV application built with Electron, designed for w
 ## Screenshots
 
 **Main UI:**
-![MetroTV Main UI](https://ibb.co/Spt5kMM)
+![MetroTV Main UI](https://i.ibb.co/KH2btff/Screenshot-2026-01-03-at-9-16-21-PM.png)
 
 **Settings Screen:**
-![MetroTV EPG Screen](https://ibb.co/ZR11yQ3J)
+![MetroTV Settings Screen](https://i.ibb.co/dsJJnNSc/Screenshot-2026-01-03-at-9-16-41-PM.png)
 
 ## Getting Started
 
