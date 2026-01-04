@@ -1,19 +1,24 @@
 # MetroTV
 
-**MetroTV** is an **Electron-based IPTV app** featuring a modern Metro-style interface and essential IPTV functionality. Built for Linux, Mac, and Windows, it focuses on simplicity, usability, and a clean design.
+MetroTV is a cross-platform IPTV application built with Electron, designed for watching live TV through multiple playlists. It features a modern Metro-inspired interface with full EPG support and intuitive navigation.
 
 ## Features
 
-- **Multiple M3U playlist support**
-- **Full-screen channel switching**
-- **Picture-in-Picture video playback**
-- **Standard XML EPG support** with synced progress bars
-- **Program info & EPG refresh buttons**
-- **Responsive Metro-style UI** with loading screens
+- Supports multiple IPTV playlists
+- Metro color themes and full-screen channel switching
+- EPG with synced progress bars and program information
+- Refreshable EPG
+- Loading screens for smooth transitions
 
-MetroTV delivers a polished core IPTV experience, with future updates planned to expand multimedia playback, DVR functionality, and metadata support.
+## Screenshots
 
----
+**Main UI:**
+![MetroTV Main UI](assets/main_ui.png)
+
+**EPG Screen:**
+![MetroTV EPG Screen](assets/epg_screen.png)
+
+## Getting Started
 
 ## Getting Started
 
