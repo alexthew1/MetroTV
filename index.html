@@ -1,735 +1,736 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600&display=swap" rel="stylesheet">
-    <title>MetroTV</title>
-    <style>
-        :root {
-            --accent: #00aba9;
-            --bg: #000;
-            --tile: #1a1a1a;
-            --ch-w: 160px;
-            --row-h: 85px;
-            --min-w: 6px;
-        }
-
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; scrollbar-width: none; -ms-overflow-style: none; }
-        *::-webkit-scrollbar { display: none; }
-
-        body, html { 
-            margin: 0; padding: 0; height: 100vh; width: 100vw;
-            background: var(--bg); color: white;
-            font-family: 'Segoe UI', 'Open Sans', sans-serif; overflow: hidden;
-            display: flex; flex-direction: column;
-        }
-
-        /* --- LOADING OVERLAY --- */
-        #loading-overlay {
-            position: fixed; inset: 0; background: #000; z-index: 9999;
-            display: none; flex-direction: column; align-items: center; justify-content: center;
-            background-image: linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
-            background-size: 80px 80px;
-        }
-        .load-box { width: 85%; max-width: 500px; }
-        .load-text { font-size: 1.8rem; font-weight: 100; margin-bottom: 20px; text-transform: uppercase; }
-        .load-bar-bg { width: 100%; height: 50px; background: #0a1128; position: relative; }
-        .load-bar-fill { width: 0%; height: 100%; background: var(--accent); transition: width 0.5s ease; }
-
-        /* --- PIVOT BAR (OFFICIAL METRO STYLE) --- */
-        .nav-pivot { 
-            padding: 30px 40px 10px; /* More breathing room */
-            display: flex; 
-            gap: 35px; 
-            background: #000; 
-            z-index: 100; 
-            flex-shrink: 0; 
-            align-items: baseline; /* Align text properly */
-        }
-        .nav-pivot span { 
-            font-size: 2.8rem; /* Large, header-like text */
-            color: #fff;
-            opacity: 0.4; /* Dimmed inactive state */
-            cursor: pointer; 
-            text-transform: lowercase; 
-            font-weight: 100; /* Very light weight (Segoe UI Light style) */
-            transition: opacity 0.2s ease-in-out; 
-            letter-spacing: -0.02em;
-        }
-        .nav-pivot span:hover {
-            opacity: 0.7;
-        }
-        .nav-pivot span.active { 
-            opacity: 1; /* Bright white active state */
-            font-weight: 300; /* Slightly heavier than inactive, but still light */
-        }
-
-        /* --- INFO AREA --- */
-        #info-area { 
-            height: 180px; display: flex; padding: 10px 30px; 
-            background: #000; border-bottom: 1px solid #111; 
-            position: relative; flex-shrink: 0; 
-        }
-        #meta-content { flex: 1; padding-right: 330px; overflow: hidden; }
-        #meta-title { font-size: 2.2rem; margin: 0; color: var(--accent); font-weight: 100; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        #meta-sub { font-size: 1.1rem; color: #888; margin: 5px 0; }
-        #meta-desc { font-size: 0.95rem; color: #bbb; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-
-        /* --- PLAYER --- */
-        #pip-box { 
-            position: fixed; top: 0; right: 0; width: 320px; height: 180px; 
-            background: #000; cursor: pointer; z-index: 5000; 
-            border-left: 1px solid #111; border-bottom: 1px solid #111; 
-            overflow: hidden; display: none; 
-        }
-        #pip-box.expanded { width: 100vw; height: 100vh; z-index: 5000; border: none; cursor: default; }
-        video { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
-
-        #fs-overlay { position: absolute; top: 40px; left: 40px; display: flex; align-items: center; gap: 20px; z-index: 5002; opacity: 0; transition: 0.5s; pointer-events: none; }
-        #fs-logo { height: 65px; filter: drop-shadow(0 0 10px #000); }
-        #fs-ch-name { font-size: 2.2rem; font-weight: 300; text-shadow: 2px 2px 4px #000; }
-
-        .player-controls { 
-            position: absolute; bottom: 0; left: 0; right: 0; height: 160px; 
-            background: linear-gradient(transparent, rgba(0,0,0,0.95)); 
-            display: none; flex-direction: column; align-items: center; justify-content: center; 
-            z-index: 5001; opacity: 0; transition: 0.5s; 
-        }
-        #progress-container { width: 85%; height: 6px; background: rgba(255,255,255,0.2); margin-bottom: 25px; }
-        #progress-bar { height: 100%; background: var(--accent); width: 0%; }
-        #pip-box.expanded .player-controls { display: flex; }
-        #pip-box.expanded.ui-active .player-controls, #pip-box.expanded.ui-active #fs-overlay { opacity: 1; }
-
-        /* --- GRID ENGINE --- */
-        .guide-root { flex: 1; display: none; flex-direction: column; overflow: hidden; }
-        
-        .time-header { 
-            display: grid; margin-left: var(--ch-w); height: 40px; 
-            background: #000; overflow: hidden; flex-shrink: 0; 
-            border-bottom: 1px solid #111; 
-            position: relative; z-index: 60; 
-            grid-template-columns: repeat(1440, var(--min-w)); 
-        }
-        .time-slot { 
-            grid-column: span 30; padding: 10px; color: #777; font-size: 0.85rem; 
-            border-left: 1px solid #111; flex-shrink: 0; white-space: nowrap; overflow: hidden;
-        }
-        
-        .grid-container { flex: 1; display: flex; overflow: auto; background: #000; scroll-behavior: smooth; position: relative; }
-        
-        .channel-list { 
-            width: var(--ch-w); min-width: var(--ch-w); position: sticky; left: 0; 
-            background: #000; z-index: 60; 
-            flex-shrink: 0; border-right: 1px solid #111; 
-        }
-        .ch-item { 
-            height: var(--row-h); display: flex; align-items: center; padding: 10px; 
-            cursor: pointer; background: #000; border-bottom: 1px solid #111; 
-        }
-        .ch-item:hover { background: #1a1a1a; }
-        .ch-item.selected { background: #2a2a2a; border-left: 4px solid var(--accent); }
-        .ch-item img { max-width: 45px; max-height: 40px; margin-right: 12px; flex-shrink: 0; }
-        .ch-item span { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px; }
-
-        .program-matrix { display: grid; grid-auto-rows: var(--row-h); gap: 0; background: #000; width: max-content; }
-        
-        /* --- OPTIMIZED TILE --- */
-        .prog-node { 
-            background: var(--tile); padding: 10px; cursor: pointer; 
-            border: 2px solid #000; overflow: hidden; transition: 0.1s; box-sizing: border-box; 
-            position: relative; z-index: 1; font-size: 0.85rem; display: flex; align-items: center; 
-        }
-        .prog-node strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; width: 100%; }
-        .prog-node:focus { border-color: white; background: var(--accent); outline: none; z-index: 10; }
-
-        /* --- CHANNELS VIEW --- */
-        #channels-view { display: none; flex: 1; overflow-y: auto; padding: 40px; flex-direction: column; }
-        .grid-section-title { 
-            font-size: 1.8rem; font-weight: 100; margin: 20px auto 10px auto; color: #fff; 
-            border-bottom: 2px solid #333; padding-bottom: 5px; text-align: left; width: 100%; max-width: 1000px;
-        }
-        .channel-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 0 auto 50px auto; width: 100%; max-width: 1000px; }
-        .channel-tile { 
-            background: var(--tile); height: 120px; display: flex; flex-direction: column; 
-            align-items: center; justify-content: center; cursor: pointer; 
-            border: 2px solid transparent; transition: 0.2s; overflow: hidden;
-        }
-        .channel-tile:hover { border-color: var(--accent); background: #222; }
-        .channel-tile img { max-height: 50px; margin-bottom: 10px; transform: scale(0.7); }
-        .channel-tile span { font-size: 1rem; font-weight: 600; text-align: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 15ch; }
-
-        /* --- RIBBON --- */
-        .ribbon-bar { height: 70px; background: #111; border-top: 1px solid #333; display: none; justify-content: center; align-items: center; gap: 60px; z-index: 200; flex-shrink: 0; }
-        .ribbon-btn { display: flex; flex-direction: column; align-items: center; opacity: 0.7; cursor: pointer; transition: 0.2s; }
-        .ribbon-btn:hover { opacity: 1; color: var(--accent); }
-        .ribbon-icon { width: 30px; height: 30px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; }
-        .ribbon-btn span { font-size: 0.8rem; text-transform: lowercase; }
-
-        /* --- SETTINGS PLAYLIST CARDS --- */
-        .playlist-card { 
-            background: #111; padding: 20px; margin-bottom: 12px; 
-            border-left: 6px solid #333; 
-            display: flex; justify-content: space-between; align-items: center; 
-            cursor: pointer; transition: 0.2s;
-        }
-        .playlist-card:hover { background: #1a1a1a; }
-        .playlist-card.active-pl { border-left-color: var(--accent); background: #222; }
-        .playlist-card.active-pl span { color: var(--accent); font-weight: 600; }
-        .file-btn { display: inline-block; background: #333; padding: 8px 15px; margin-right: 10px; font-size: 0.9rem; cursor: pointer; }
-
-        .wp-circle { width: 65px; height: 65px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: white; }
-        .wp-circle svg { width: 30px; height: 30px; fill: currentColor; }
-        #modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.96); z-index: 6000; flex-direction: column; align-items: center; justify-content: center; }
-        .btn-metro { padding: 12px 30px; background: var(--accent); border: none; color: white; cursor: pointer; font-weight: 600; text-transform: lowercase; }
-        .swatch { width: 40px; height: 40px; cursor: pointer; display: inline-block; margin-right: 12px; border: 2px solid transparent; }
-        .playlist-card { background: #111; padding: 20px; margin-bottom: 12px; border-left: 6px solid var(--accent); display: flex; justify-content: space-between; align-items: center; }
-        
-        #empty-state { flex: 1; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-    </style>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2685.2">
+  <style type="text/css">
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Menlo; color: #8cd3fe; -webkit-text-stroke: #8cd3fe; background-color: #171717}
+    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Menlo; color: #8cd3fe; -webkit-text-stroke: #8cd3fe; background-color: #171717; min-height: 14.0px}
+    span.s1 {font-kerning: none}
+  </style>
 </head>
 <body>
-
-    <div id="loading-overlay">
-        <div class="load-box">
-            <div class="load-text">LOADING PLAYLIST...</div>
-            <div class="load-bar-bg"><div id="load-progress" class="load-bar-fill"></div></div>
-        </div>
-    </div>
-
-    <div class="nav-pivot">
-        <span id="tab-g" class="active" onclick="view('guide')">guide</span>
-        <span id="tab-c" onclick="view('channels')">channels</span>
-        <span id="tab-s" onclick="view('settings')">settings</span>
-    </div>
-
-    <div id="info-area">
-        <div id="meta-content">
-            <h1 id="meta-title">Welcome</h1>
-            <p id="meta-sub">MetroTV</p>
-            <p id="meta-desc">Connect a playlist to get started.</p>
-        </div>
-    </div>
-
-    <div id="pip-box" onclick="goFull()" onmousemove="handlePlayerMouse()">
-        <div id="fs-overlay"><img id="fs-logo" src=""><span id="fs-ch-name"></span></div>
-        <video id="vid" autoplay muted></video>
-        <div class="player-controls">
-            <div id="progress-container"><div id="progress-bar"></div></div>
-            <div style="display:flex; gap:40px;">
-                <div class="wp-circle" onclick="togglePlay(event)"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
-                <div class="wp-circle" onclick="toggleMute(event)"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg></div>
-                <div class="wp-circle" onclick="minimizePlayer(event)"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></div>
-            </div>
-        </div>
-    </div>
-
-    <div id="empty-state">
-        <h2 style="font-weight:100; font-size:3rem; color:var(--accent);">no playlists</h2>
-        <button class="btn-metro" onclick="view('settings')">add a playlist</button>
-    </div>
-
-    <div id="guide-view" class="guide-root">
-        <div class="time-header" id="timer"></div>
-        <div class="grid-container" id="gridCont">
-            <div class="channel-list" id="chList"></div>
-            <div class="program-matrix" id="matrix"></div>
-        </div>
-    </div>
-
-    <div id="channels-view">
-        <div id="fav-section" style="display:none">
-            <div class="grid-section-title">favorites</div>
-            <div class="channel-grid" id="fav-grid"></div>
-        </div>
-        <div class="grid-section-title">all channels</div>
-        <div class="channel-grid" id="all-grid"></div>
-    </div>
-
-    <div class="ribbon-bar" id="ribbon">
-        <div class="ribbon-btn" onclick="ribbonAction('info')"><div class="ribbon-icon">i</div><span>info</span></div>
-        <div class="ribbon-btn" onclick="ribbonAction('refresh')"><div class="ribbon-icon">↻</div><span>refresh</span></div>
-        <div class="ribbon-btn" onclick="ribbonAction('fav')"><div class="ribbon-icon">★</div><span>favorite</span></div>
-    </div>
-
-    <div id="settings-view" style="display:none; padding:40px; overflow-y:auto;">
-        <h2 style="font-weight:100; color:var(--accent);">appearance</h2>
-        <div id="swatches" style="margin-bottom:40px"></div>
-        
-        <h2 style="font-weight:100; color:var(--accent);">data management</h2>
-        <div style="margin-bottom:40px">
-            <div class="file-btn" onclick="exportData()">Backup Config</div>
-            <div class="file-btn" onclick="document.getElementById('file-in').click()">Restore Config</div>
-            <input type="file" id="file-in" style="display:none" onchange="importData(this)">
-        </div>
-
-        <h2 style="font-weight:100; color:var(--accent);">add playlist</h2>
-        <input type="text" id="pl-name" style="background:#111; border:2px solid #333; color:white; padding:12px; width:100%; max-width:500px; display:block; margin-bottom:10px" placeholder="Playlist Name (e.g. Sports)">
-        <input type="text" id="m3u-in" style="background:#111; border:2px solid #333; color:white; padding:12px; width:100%; max-width:500px; display:block; margin-bottom:10px" placeholder="M3U URL">
-        <input type="text" id="xml-in" style="background:#111; border:2px solid #333; color:white; padding:12px; width:100%; max-width:500px; display:block; margin-bottom:10px" placeholder="XML EPG URL">
-        <input type="number" id="epg-shift" style="background:#111; border:2px solid #333; color:white; padding:12px; width:100%; max-width:500px; display:block; margin-bottom:15px" placeholder="EPG Shift (Hours)">
-        <button onclick="addPlaylist()" class="btn-metro">ADD PLAYLIST</button>
-        
-        <h3 style="font-weight:100; color:var(--accent); margin-top:40px;">saved playlists</h3>
-        <p style="color:#777; font-size:0.9rem;">click a playlist to load it</p>
-        <div id="saved-lists" style="margin-top:20px; max-width:600px;"></div>
-    </div>
-
-    <div id="modal-overlay">
-        <h1 id="modal-title" style="font-weight:100; font-size:2.5rem; text-align:center;">Program</h1>
-        <div style="display:flex; gap:45px; margin-top:40px;">
-            <div onclick="doAct('watch')" class="wp-circle"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
-            <div onclick="doAct('close')" class="wp-circle"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></div>
-        </div>
-    </div>
-
-    <script>
-        const COLORS = ['#00aba9', '#a4c400', '#1ba1e2', '#6a00ff', '#d80073', '#e51400', '#fa6800', '#f0a30a'];
-        let state = {
-            channels: [], epg: {}, 
-            favorites: JSON.parse(localStorage.getItem('met_favs') || '[]'),
-            playlists: JSON.parse(localStorage.getItem('met_v34') || '[]'),
-            activeIdx: parseInt(localStorage.getItem('met_act_idx_v34') || '0'),
-            accent: localStorage.getItem('met_ac_v34') || '#00aba9',
-            epgShift: 0,
-            sel: null, activeCh: null, lastBaseTime: 0
-        };
-        let hlsApi = null;
-
-        function init() {
-            applyTheme(state.accent);
-            renderSwatches();
-            renderSaved();
-            checkPlaylists();
-            
-            document.getElementById('gridCont').onscroll = (e) => { 
-                document.getElementById('timer').scrollLeft = e.target.scrollLeft; 
-            };
-
-            document.addEventListener('keydown', (e) => {
-                const pip = document.getElementById('pip-box');
-                if (pip.classList.contains('expanded') && state.sel) {
-                    if (e.key === 'ArrowDown') switchChannel('next');
-                    if (e.key === 'ArrowUp') switchChannel('prev');
-                }
-            });
-
-            setInterval(() => {
-                const now = new Date();
-                const progress = ((now.getMinutes() % 30) / 30) * 100;
-                document.getElementById('progress-bar').style.width = progress + "%";
-                const currentBase = getBaseTime();
-                if(currentBase !== state.lastBaseTime && state.channels.length > 0) {
-                    renderGrid(); 
-                }
-            }, 5000);
-        }
-
-        function getBaseTime() {
-            const now = new Date();
-            now.setMinutes(now.getMinutes() >= 30 ? 30 : 0);
-            now.setSeconds(0); now.setMilliseconds(0);
-            return now.getTime();
-        }
-
-        function switchChannel(dir) {
-            const currentIdx = state.channels.findIndex(ch => ch.u === state.sel.u);
-            if (currentIdx === -1) return;
-            let newIdx = dir === 'next' ? (currentIdx + 1) : (currentIdx - 1 + state.channels.length);
-            newIdx %= state.channels.length;
-            playChannel(state.channels[newIdx]);
-        }
-
-        function playChannel(obj) {
-            const chName = obj.chN || obj.n || obj.t || "Unknown Channel";
-            
-            state.sel = { 
-                t: obj.t || chName, 
-                u: obj.u, 
-                l: obj.l, 
-                chN: chName, 
-                d: obj.d || "Live Broadcast" 
-            };
-
-            document.getElementById('fs-logo').src = obj.l || '';
-            document.getElementById('fs-ch-name').innerText = chName;
-            
-            const v = document.getElementById('vid');
-            if(Hls.isSupported()){ 
-                if(hlsApi) hlsApi.destroy();
-                hlsApi = new Hls(); hlsApi.loadSource(obj.u); hlsApi.attachMedia(v); v.play();
-            } else { v.src = obj.u; v.play(); }
-            handlePlayerMouse();
-        }
-
-        function checkPlaylists() {
-            if(state.playlists.length > 0) {
-                if(state.activeIdx >= state.playlists.length) state.activeIdx = 0;
-                document.getElementById('empty-state').style.display = 'none';
-                const p = state.playlists[state.activeIdx];
-                state.epgShift = p.shift || 0;
-                load(p.m, p.x);
-            } else { 
-                view('guide'); 
-            }
-        }
-
-        function showLoading(show) {
-            const el = document.getElementById('loading-overlay');
-            const bar = document.getElementById('load-progress');
-            if(show) { el.style.display = 'flex'; setTimeout(() => bar.style.width = '70%', 50); }
-            else { bar.style.width = '100%'; setTimeout(() => { el.style.display = 'none'; bar.style.width = '0%'; }, 500); }
-        }
-
-        async function load(m, x) {
-            showLoading(true);
-            try {
-                const mText = await fetch(m).then(r => r.text());
-                state.channels = [];
-                mText.split('#EXTINF').forEach(chunk => {
-                    if(!chunk.includes('http')) return;
-                    state.channels.push({
-                        n: chunk.split(',')[1]?.split('\n')[0].trim(),
-                        u: chunk.split('\n').find(l => l.startsWith('http'))?.trim(),
-                        l: chunk.match(/tvg-logo="([^"]+)"/)?.[1],
-                        id: chunk.match(/tvg-id="([^"]+)"/)?.[1]
-                    });
-                });
-                if(x) await fetchEPG(x);
-                renderGrid();
-                renderChannelGrids();
-                view('guide');
-            } catch(e) { console.error("Load Failed"); }
-            showLoading(false);
-        }
-
-        function parseEPGDate(tStr) {
-            if(!tStr || tStr.length < 12) return null;
-            const y = parseInt(tStr.substring(0,4));
-            const m = parseInt(tStr.substring(4,6)) - 1;
-            const d = parseInt(tStr.substring(6,8));
-            const h = parseInt(tStr.substring(8,10));
-            const min = parseInt(tStr.substring(10,12));
-            return new Date(y, m, d, h, min).getTime();
-        }
-
-        async function fetchEPG(url) {
-            try {
-                const txt = await fetch(url).then(r => r.text());
-                const xml = new DOMParser().parseFromString(txt, "text/xml");
-                const progs = xml.getElementsByTagName('programme');
-                state.epg = {};
-                const shiftMs = state.epgShift * 3600000;
-                for(let p of progs) {
-                    const cid = p.getAttribute('channel');
-                    if(!state.epg[cid]) state.epg[cid] = [];
-                    const startTs = parseEPGDate(p.getAttribute('start'));
-                    const stopTs = parseEPGDate(p.getAttribute('stop'));
-                    if(startTs) {
-                        state.epg[cid].push({
-                            t: p.getElementsByTagName('title')[0]?.textContent,
-                            d: p.getElementsByTagName('desc')[0]?.textContent || "No description.",
-                            start: startTs + shiftMs, 
-                            stop: (stopTs || (startTs + 3600000)) + shiftMs
-                        });
-                    }
-                }
-            } catch(e) {}
-        }
-
-        function renderGrid() {
-            const list = document.getElementById('chList');
-            const matrix = document.getElementById('matrix');
-            const timer = document.getElementById('timer');
-            list.innerHTML = ''; matrix.innerHTML = ''; timer.innerHTML = '';
-            
-            const baseTime = getBaseTime();
-            state.lastBaseTime = baseTime;
-            const minutesToRender = 1440; 
-            matrix.style.gridTemplateColumns = `repeat(${minutesToRender}, var(--min-w))`;
-            
-            for(let i=0; i<48; i++) {
-                const sTime = new Date(baseTime + (i * 30 * 60000));
-                const s = document.createElement('div'); s.className = 'time-slot';
-                s.innerText = `${sTime.getHours()}:${sTime.getMinutes() === 0 ? '00' : '30'}`; 
-                timer.appendChild(s);
-            }
-
-            state.channels.forEach((ch, idx) => {
-                const cDiv = document.createElement('div');
-                cDiv.className = 'ch-item';
-                cDiv.innerHTML = (ch.l ? `<img src="${ch.l}">` : '') + `<span>${ch.n}</span>`;
-                cDiv.onclick = () => {
-                    document.querySelectorAll('.ch-item, .prog-node').forEach(x => x.classList.remove('selected'));
-                    cDiv.classList.add('selected');
-                    state.activeCh = { n: ch.n, u: ch.u, l: ch.l };
-                    state.sel = { t: ch.n, u: ch.u, l: ch.l, chN: ch.n, d: "Channel Selection" }; 
-                };
-                cDiv.ondblclick = () => openModal(ch.n, "Live Stream", ch.u, ch.n, ch.l);
-                list.appendChild(cDiv);
-
-                const progs = state.epg[ch.id] || state.epg[ch.n] || [];
-                if(progs.length === 0) {
-                    drawTile("Live Stream", "Direct Broadcast", 1, 1440, idx+1, ch.u, ch.n, ch.l);
-                } else {
-                    progs.forEach(p => {
-                        if (p.stop <= baseTime) return;
-                        const startDiff = (p.start - baseTime) / 60000;
-                        const duration = (p.stop - p.start) / 60000;
-                        let colStart = Math.floor(startDiff) + 1;
-                        let span = Math.ceil(duration);
-                        if (colStart < 1) { span = span + (colStart - 1); colStart = 1; }
-                        if (span > 0 && colStart <= 1440) {
-                            drawTile(p.t, p.d, colStart, span, idx+1, ch.u, ch.n, ch.l);
-                        }
-                    });
-                }
-            });
-        }
-
-        function drawTile(t, d, col, span, row, u, chN, logo) {
-            const el = document.createElement('div');
-            el.className = 'prog-node'; el.tabIndex = 0;
-            el.style.gridColumn = `${col} / span ${span}`; 
-            el.style.gridRow = row;
-            el.innerHTML = `<strong>${t}</strong>`;
-            el.onclick = () => selectItem(t, u, logo, d, chN, el);
-            el.ondblclick = () => openModal(t, d, u, chN, logo);
-            document.getElementById('matrix').appendChild(el);
-        }
-
-        function selectItem(t, u, l, d, chN, el) {
-            document.getElementById('meta-title').innerText = t;
-            document.getElementById('meta-sub').innerText = chN;
-            document.getElementById('meta-desc').innerText = d;
-            state.sel = { t, u, l, d, chN };
-            state.activeCh = { n: chN, u: u, l: l };
-            document.querySelectorAll('.ch-item, .prog-node').forEach(x => x.classList.remove('selected'));
-            if(el) el.classList.add('selected');
-        }
-
-        function ribbonAction(act) {
-            if(act === 'info' && state.sel) alert(`${state.sel.t}\n${state.sel.chN}\n\n${state.sel.d}`);
-            if(act === 'refresh' && state.playlists[0]) load(state.playlists[0].m, state.playlists[0].x);
-            if(act === 'fav' && state.activeCh) toggleFavorite(state.activeCh);
-        }
-
-        function toggleFavorite(ch) {
-            const idx = state.favorites.findIndex(f => f.n === ch.n);
-            if(idx > -1) { state.favorites.splice(idx, 1); }
-            else { state.favorites.push(ch); }
-            localStorage.setItem('met_favs', JSON.stringify(state.favorites));
-            renderChannelGrids();
-        }
-
-        function renderChannelGrids() {
-            const favGrid = document.getElementById('fav-grid');
-            const allGrid = document.getElementById('all-grid');
-            favGrid.innerHTML = ''; allGrid.innerHTML = '';
-            document.getElementById('fav-section').style.display = state.favorites.length > 0 ? 'block' : 'none';
-            state.favorites.forEach(ch => { favGrid.appendChild(createChannelTile(ch)); });
-            state.channels.forEach(ch => {
-                if(!state.favorites.find(f => f.n === ch.n)) allGrid.appendChild(createChannelTile(ch));
-            });
-        }
-
-        function createChannelTile(ch) {
-            const d = document.createElement('div');
-            d.className = 'channel-tile';
-            d.innerHTML = (ch.l ? `<img src="${ch.l}">` : '') + `<span>${ch.n}</span>`;
-            d.onclick = () => {
-                playChannel(ch);
-                const pip = document.getElementById('pip-box');
-                pip.style.display = 'block';
-                pip.classList.add('expanded');
-                handlePlayerMouse();
-            };
-            return d;
-        }
-
-        function openModal(t, d, u, chN, logo) {
-            state.sel = { t, u, l: logo, d, chN };
-            document.getElementById('modal-title').innerText = t;
-            document.getElementById('modal-overlay').style.display = 'flex';
-        }
-
-        function doAct(type) {
-            document.getElementById('modal-overlay').style.display = 'none';
-            if(type === 'watch' && state.sel) {
-                const pip = document.getElementById('pip-box');
-                pip.style.display = 'block';
-                pip.classList.add('expanded'); 
-                playChannel(state.sel);
-                handlePlayerMouse();
-            }
-        }
-
-        function goFull() {
-            const pip = document.getElementById('pip-box');
-            if(!pip.classList.contains('expanded')) {
-                pip.classList.add('expanded');
-                if(state.sel) {
-                    document.getElementById('fs-logo').src = state.sel.l || '';
-                    document.getElementById('fs-ch-name').innerText = state.sel.chN || state.sel.t || '';
-                }
-                handlePlayerMouse();
-            }
-        }
-
-        function handlePlayerMouse() {
-            const pip = document.getElementById('pip-box');
-            if(!pip.classList.contains('expanded')) return;
-            pip.classList.add('ui-active');
-            clearTimeout(state.uiTimer);
-            state.uiTimer = setTimeout(() => pip.classList.remove('ui-active'), 3000);
-        }
-
-        function minimizePlayer(e) { 
-            e.stopPropagation(); 
-            const pip = document.getElementById('pip-box');
-            const inChannels = document.getElementById('channels-view').style.display === 'flex';
-            if(inChannels) {
-                pip.style.display = 'none';
-                pip.classList.remove('expanded');
-                const v = document.getElementById('vid');
-                v.pause();
-                v.src = "";
-            } else {
-                pip.classList.remove('expanded', 'ui-active');
-            }
-        }
-        function togglePlay(e) { e.stopPropagation(); const v = document.getElementById('vid'); v.paused ? v.play() : v.pause(); }
-        function toggleMute(e) { e.stopPropagation(); const v = document.getElementById('vid'); v.muted = !v.muted; }
-
-        function view(v) {
-            const isG = v === 'guide';
-            const isC = v === 'channels';
-            const isS = v === 'settings';
-            const hasP = state.playlists.length > 0;
-
-            document.getElementById('guide-view').style.display = (isG && hasP) ? 'flex' : 'none';
-            document.getElementById('channels-view').style.display = (isC && hasP) ? 'flex' : 'none';
-            document.getElementById('settings-view').style.display = isS ? 'block' : 'none';
-            document.getElementById('empty-state').style.display = (!hasP && !isS) ? 'flex' : 'none';
-            document.getElementById('ribbon').style.display = (isG && hasP) ? 'flex' : 'none';
-            document.getElementById('info-area').style.display = (isG && hasP) ? 'flex' : 'none';
-            
-            document.getElementById('tab-g').className = isG ? 'active' : '';
-            document.getElementById('tab-c').className = isC ? 'active' : '';
-            document.getElementById('tab-s').className = isS ? 'active' : '';
-
-            const pip = document.getElementById('pip-box');
-            if(isC || isS) {
-                if(!pip.classList.contains('expanded')) pip.style.display = 'none';
-            } else if (isG && state.sel && hasP) {
-                pip.style.display = 'block';
-            }
-        }
-
-        function addPlaylist() {
-            const nameIn = document.getElementById('pl-name');
-            const mIn = document.getElementById('m3u-in');
-            const xIn = document.getElementById('xml-in');
-            const sIn = document.getElementById('epg-shift');
-
-            const m = mIn.value.trim();
-            if(!m) { alert("M3U URL is required"); return; }
-
-            const name = nameIn.value.trim() || "Playlist " + (state.playlists.length + 1);
-            const x = xIn.value.trim();
-            const shift = parseFloat(sIn.value || '0');
-            
-            const newPl = { name, m, x, shift };
-            state.playlists.push(newPl);
-            state.activeIdx = state.playlists.length - 1;
-            
-            saveState();
-            renderSaved();
-            checkPlaylists();
-            view('guide');
-
-            nameIn.value = ''; mIn.value = ''; xIn.value = ''; sIn.value = '';
-        }
-
-        function setActivePlaylist(idx) {
-            state.activeIdx = idx;
-            saveState();
-            checkPlaylists();
-            renderSaved();
-        }
-
-        function deletePlaylist(idx, e) {
-            e.stopPropagation();
-            state.playlists.splice(idx, 1);
-            if(state.activeIdx >= state.playlists.length) state.activeIdx = Math.max(0, state.playlists.length - 1);
-            saveState();
-            renderSaved();
-            if(state.playlists.length === 0) {
-                document.getElementById('empty-state').style.display = 'flex';
-                document.getElementById('guide-view').style.display = 'none';
-            } else { checkPlaylists(); }
-        }
-
-        function saveState() {
-            localStorage.setItem('met_v34', JSON.stringify(state.playlists));
-            localStorage.setItem('met_act_idx_v34', state.activeIdx);
-        }
-
-        function exportData() {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
-            const dlAnchorElem = document.createElement('a');
-            dlAnchorElem.setAttribute("href", dataStr);
-            dlAnchorElem.setAttribute("download", "metrotv_backup.json");
-            dlAnchorElem.click();
-        }
-
-        function importData(input) {
-            const file = input.files[0];
-            if(!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const loaded = JSON.parse(e.target.result);
-                    state.playlists = loaded.playlists || [];
-                    state.favorites = loaded.favorites || [];
-                    state.activeIdx = loaded.activeIdx || 0;
-                    state.accent = loaded.accent || '#00aba9';
-                    
-                    localStorage.setItem('met_v34', JSON.stringify(state.playlists));
-                    localStorage.setItem('met_favs', JSON.stringify(state.favorites));
-                    localStorage.setItem('met_act_idx_v34', state.activeIdx);
-                    localStorage.setItem('met_ac_v34', state.accent);
-                    
-                    alert("Config Restored!");
-                    location.reload();
-                } catch(err) { alert("Invalid Backup File"); }
-            };
-            reader.readAsText(file);
-        }
-
-        function applyTheme(c) { state.accent = c; document.documentElement.style.setProperty('--accent', c); localStorage.setItem('met_ac_v34', c); }
-        function renderSwatches() {
-            const s = document.getElementById('swatches');
-            COLORS.forEach(c => {
-                const d = document.createElement('div'); d.className = 'swatch'; d.style.background = c;
-                d.onclick = () => applyTheme(c); s.appendChild(d);
-            });
-        }
-        function renderSaved() {
-            const cont = document.getElementById('saved-lists');
-            cont.innerHTML = '';
-            state.playlists.forEach((p, i) => {
-                const isActive = i === state.activeIdx;
-                const d = document.createElement('div'); 
-                d.className = `playlist-card ${isActive ? 'active-pl' : ''}`;
-                d.onclick = () => setActivePlaylist(i);
-                d.innerHTML = `<span>${p.name || 'Playlist ' + (i+1)}</span>
-                <button style="background:#b00; border:none; color:white; padding:8px 15px; cursor:pointer; font-weight:bold" onclick="deletePlaylist(${i}, event)">DEL</button>`;
-                cont.appendChild(d);
-            });
-        }
-
-        init();
-    </script>
+<p class="p1"><span class="s1">&lt;!DOCTYPE html&gt;</span></p>
+<p class="p1"><span class="s1">&lt;html lang="en"&gt;</span></p>
+<p class="p1"><span class="s1">&lt;head&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;meta charset="UTF-8"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;script src="https://cdn.jsdelivr.net/npm/hls.js@latest"&gt;&lt;/script&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600&amp;display=swap" rel="stylesheet"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;title&gt;MetroTV&lt;/title&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;style&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>:root {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>--accent: #00aba9;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>--bg: #000;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>--tile: #1a1a1a;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>--ch-w: 160px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>--row-h: 85px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>--min-w: 6px; /* 6px per minute */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; scrollbar-width: none; -ms-overflow-style: none; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>*::-webkit-scrollbar { display: none; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>body, html {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>margin: 0; padding: 0; height: 100vh; width: 100vw;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: var(--bg); color: white;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>font-family: 'Segoe UI', 'Open Sans', sans-serif; overflow: hidden;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>display: flex; flex-direction: column;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>/* --- LOADING OVERLAY --- */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#loading-overlay {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>position: fixed; inset: 0; background: #000; z-index: 9999;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>display: none; flex-direction: column; align-items: center; justify-content: center;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background-image: linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background-size: 80px 80px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.load-box { width: 85%; max-width: 500px; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.load-text { font-size: 1.8rem; font-weight: 100; margin-bottom: 20px; text-transform: uppercase; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.load-bar-bg { width: 100%; height: 50px; background: #0a1128; position: relative; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.load-bar-fill { width: 0%; height: 100%; background: var(--accent); transition: width 0.5s ease; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>/* --- PIVOT BAR --- */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.nav-pivot {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>padding: 30px 40px 10px; display: flex; gap: 35px; background: #000;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>z-index: 100; flex-shrink: 0; align-items: baseline;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.nav-pivot span {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>font-size: 2.8rem; color: #fff; opacity: 0.4; cursor: pointer;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>text-transform: lowercase; font-weight: 100; transition: opacity 0.2s ease-in-out; letter-spacing: -0.02em;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.nav-pivot span:hover { opacity: 0.7; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.nav-pivot span.active { opacity: 1; font-weight: 300; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>/* --- INFO AREA --- */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#info-area {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>height: 180px; display: flex; padding: 10px 30px;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: #000; border-bottom: 1px solid #111;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>position: relative; flex-shrink: 0;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#meta-content { flex: 1; padding-right: 330px; overflow: hidden; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#meta-title { font-size: 2.2rem; margin: 0; color: var(--accent); font-weight: 100; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#meta-sub { font-size: 1.1rem; color: #888; margin: 5px 0; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#meta-desc { font-size: 0.95rem; color: #bbb; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>/* --- PLAYER --- */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#pip-box {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>position: fixed; top: 0; right: 0; width: 320px; height: 180px;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: #000; cursor: pointer; z-index: 5000;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>border-left: 1px solid #111; border-bottom: 1px solid #111;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>overflow: hidden; display: none;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#pip-box.expanded { width: 100vw; height: 100vh; z-index: 5000; border: none; cursor: default; }</span></p>
+<p class="p2"><span class="s1"><span class="Apple-converted-space">        </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>/* CONTAIN: Ensures video scales without clipping edges on weird aspect ratios */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>/* REMOVED 'muted' attribute here */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>video { width: 100%; height: 100%; object-fit: contain; background:black; pointer-events: none; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#fs-overlay { position: absolute; top: 40px; left: 40px; display: flex; align-items: center; gap: 20px; z-index: 5002; opacity: 0; transition: 0.5s; pointer-events: none; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#fs-logo { height: 65px; filter: drop-shadow(0 0 10px #000); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#fs-ch-name { font-size: 2.2rem; font-weight: 300; text-shadow: 2px 2px 4px #000; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.player-controls {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>position: absolute; bottom: 0; left: 0; right: 0; height: 160px;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: linear-gradient(transparent, rgba(0,0,0,0.95));<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>display: none; flex-direction: column; align-items: center; justify-content: center;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>z-index: 5001; opacity: 0; transition: 0.5s;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#progress-container { width: 85%; height: 6px; background: rgba(255,255,255,0.2); margin-bottom: 25px; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#progress-bar { height: 100%; background: var(--accent); width: 0%; transition: width 1s linear; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#pip-box.expanded .player-controls { display: flex; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#pip-box.expanded.ui-active .player-controls, #pip-box.expanded.ui-active #fs-overlay { opacity: 1; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>/* --- GRID ENGINE --- */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.guide-root { flex: 1; display: none; flex-direction: column; overflow: hidden; }</span></p>
+<p class="p2"><span class="s1"><span class="Apple-converted-space">        </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.time-header {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>display: grid; margin-left: var(--ch-w); height: 40px;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: #000; overflow: hidden; flex-shrink: 0;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>border-bottom: 1px solid #111; position: relative; z-index: 60;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>grid-template-columns: repeat(1440, var(--min-w));<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.time-slot {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>grid-column: span 30; padding: 10px; color: #777; font-size: 0.85rem;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>border-left: 1px solid #111; flex-shrink: 0; white-space: nowrap; overflow: hidden;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.grid-container { flex: 1; display: flex; overflow: auto; background: #000; scroll-behavior: smooth; position: relative; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.channel-list { width: var(--ch-w); min-width: var(--ch-w); position: sticky; left: 0; background: #000; z-index: 60; flex-shrink: 0; border-right: 1px solid #111; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.ch-item { height: var(--row-h); display: flex; align-items: center; padding: 10px; cursor: pointer; background: #000; border-bottom: 1px solid #111; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.ch-item:hover { background: #1a1a1a; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.ch-item.selected { background: #2a2a2a; border-left: 4px solid var(--accent); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.ch-item img { max-width: 45px; max-height: 40px; margin-right: 12px; flex-shrink: 0; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.ch-item span { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.program-matrix { display: grid; grid-auto-rows: var(--row-h); gap: 0; background: #000; width: max-content; }</span></p>
+<p class="p2"><span class="s1"><span class="Apple-converted-space">        </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.prog-node {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: var(--tile); padding: 0 4px; cursor: pointer;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>box-shadow: inset 0 0 0 1px #000; border: none;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>overflow: hidden; transition: 0.1s; box-sizing: border-box;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>position: relative; z-index: 1; font-size: 0.85rem; display: flex; align-items: center;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>min-width: 0;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.prog-node strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; width: 100%; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.prog-node:focus {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>outline: 2px solid white; outline-offset: -2px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: var(--accent); z-index: 10; box-shadow: none; overflow: visible;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#channels-view { display: none; flex: 1; overflow-y: auto; padding: 40px; flex-direction: column; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.grid-section-title { font-size: 1.8rem; font-weight: 100; margin: 20px auto 10px auto; color: #fff; border-bottom: 2px solid #333; padding-bottom: 5px; text-align: left; width: 100%; max-width: 1000px; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.channel-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 0 auto 50px auto; width: 100%; max-width: 1000px; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.channel-tile {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: var(--tile); height: 120px; display: flex; flex-direction: column;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>align-items: center; justify-content: center; cursor: pointer;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>border: 2px solid transparent; transition: 0.2s; overflow: hidden;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.channel-tile:hover { border-color: var(--accent); background: #222; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.channel-tile img { max-height: 50px; margin-bottom: 10px; transform: scale(0.7); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.channel-tile span { font-size: 1rem; font-weight: 600; text-align: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 15ch; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.ribbon-bar { height: 70px; background: #111; border-top: 1px solid #333; display: none; justify-content: center; align-items: center; gap: 60px; z-index: 200; flex-shrink: 0; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.ribbon-btn { display: flex; flex-direction: column; align-items: center; opacity: 0.7; cursor: pointer; transition: 0.2s; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.ribbon-btn:hover { opacity: 1; color: var(--accent); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.ribbon-icon { width: 30px; height: 30px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.ribbon-btn span { font-size: 0.8rem; text-transform: lowercase; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.playlist-card { background: #111; padding: 20px; margin-bottom: 12px; border-left: 6px solid var(--accent); display: flex; justify-content: space-between; align-items: center; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.btn-metro { padding: 12px 30px; background: var(--accent); border: none; color: white; cursor: pointer; font-weight: 600; text-transform: lowercase; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.file-btn { display: inline-block; background: #333; padding: 8px 15px; margin-right: 10px; font-size: 0.9rem; cursor: pointer; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.swatch { width: 40px; height: 40px; cursor: pointer; display: inline-block; margin-right: 12px; border: 2px solid transparent; }</span></p>
+<p class="p2"><span class="s1"><span class="Apple-converted-space">        </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#empty-state { flex: 1; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.96); z-index: 6000; flex-direction: column; align-items: center; justify-content: center; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.wp-circle { width: 65px; height: 65px; border: 2px solid white; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; color: white; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.wp-circle svg { width: 30px; height: 30px; fill: currentColor; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/style&gt;</span></p>
+<p class="p1"><span class="s1">&lt;/head&gt;</span></p>
+<p class="p1"><span class="s1">&lt;body&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div id="loading-overlay"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="load-box"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="load-text"&gt;LOADING PLAYLIST...&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="load-bar-bg"&gt;&lt;div id="load-progress" class="load-bar-fill"&gt;&lt;/div&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div class="nav-pivot"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;span id="tab-g" class="active" onclick="view('guide')"&gt;guide&lt;/span&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;span id="tab-c" onclick="view('channels')"&gt;channels&lt;/span&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;span id="tab-s" onclick="view('settings')"&gt;settings&lt;/span&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div id="info-area"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div id="meta-content"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;h1 id="meta-title"&gt;Welcome&lt;/h1&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;p id="meta-sub"&gt;MetroTV&lt;/p&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;p id="meta-desc"&gt;Connect a playlist to get started.&lt;/p&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div id="pip-box" onclick="goFull()" onmousemove="handlePlayerMouse()"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div id="fs-overlay"&gt;&lt;img id="fs-logo" src=""&gt;&lt;span id="fs-ch-name"&gt;&lt;/span&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;video id="vid" autoplay&gt;&lt;/video&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="player-controls"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div id="progress-container"&gt;&lt;div id="progress-bar"&gt;&lt;/div&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div style="display:flex; gap:40px;"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="wp-circle" onclick="togglePlay(event)"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;svg viewBox="0 0 24 24"&gt;&lt;path id="play-icon-path" d="M8 5v14l11-7z"/&gt;&lt;/svg&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="wp-circle" onclick="toggleMute(event)"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;svg id="mute-icon" viewBox="0 0 24 24"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/svg&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="wp-circle" onclick="minimizePlayer(event)"&gt;&lt;svg viewBox="0 0 24 24"&gt;&lt;path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/&gt;&lt;/svg&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div id="empty-state"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;h2 style="font-weight:100; font-size:3rem; color:var(--accent);"&gt;no playlists&lt;/h2&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;button class="btn-metro" onclick="view('settings')"&gt;add a playlist&lt;/button&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div id="guide-view" class="guide-root"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="time-header" id="timer"&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="grid-container" id="gridCont"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="channel-list" id="chList"&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="program-matrix" id="matrix"&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div id="channels-view"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div id="fav-section" style="display:none"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="grid-section-title"&gt;favorites&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="channel-grid" id="fav-grid"&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="grid-section-title"&gt;all channels&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="channel-grid" id="all-grid"&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div class="ribbon-bar" id="ribbon"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="ribbon-btn" onclick="ribbonAction('info')"&gt;&lt;div class="ribbon-icon"&gt;i&lt;/div&gt;&lt;span&gt;info&lt;/span&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="ribbon-btn" onclick="ribbonAction('refresh')"&gt;&lt;div class="ribbon-icon"&gt;↻&lt;/div&gt;&lt;span&gt;refresh&lt;/span&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="ribbon-btn" onclick="ribbonAction('fav')"&gt;&lt;div class="ribbon-icon"&gt;★&lt;/div&gt;&lt;span&gt;favorite&lt;/span&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div id="settings-view" style="display:none; padding:40px; overflow-y:auto;"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;h2 style="font-weight:100; color:var(--accent);"&gt;appearance&lt;/h2&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div id="swatches" style="margin-bottom:40px"&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;h2 style="font-weight:100; color:var(--accent);"&gt;data management&lt;/h2&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div style="margin-bottom:40px"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="file-btn" onclick="exportData()"&gt;Backup Config&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="file-btn" onclick="document.getElementById('file-in').click()"&gt;Restore Config&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;input type="file" id="file-in" style="display:none" onchange="importData(this)"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;h2 style="font-weight:100; color:var(--accent);"&gt;add playlist&lt;/h2&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;input type="text" id="pl-name" style="background:#111; border:2px solid #333; color:white; padding:12px; width:100%; max-width:500px; display:block; margin-bottom:10px" placeholder="Playlist Name"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;input type="text" id="m3u-in" style="background:#111; border:2px solid #333; color:white; padding:12px; width:100%; max-width:500px; display:block; margin-bottom:10px" placeholder="M3U URL"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;input type="text" id="xml-in" style="background:#111; border:2px solid #333; color:white; padding:12px; width:100%; max-width:500px; display:block; margin-bottom:10px" placeholder="XML EPG URL"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;input type="number" id="epg-shift" style="background:#111; border:2px solid #333; color:white; padding:12px; width:100%; max-width:500px; display:block; margin-bottom:15px" placeholder="EPG Shift (Hours)"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;button onclick="addPlaylist()" class="btn-metro"&gt;ADD PLAYLIST&lt;/button&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;h3 style="font-weight:100; color:var(--accent); margin-top:40px;"&gt;saved playlists&lt;/h3&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div id="saved-lists" style="margin-top:20px; max-width:600px;"&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div id="modal-overlay"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;h1 id="modal-title" style="font-weight:100; font-size:2.5rem; text-align:center;"&gt;Program&lt;/h1&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div style="display:flex; gap:45px; margin-top:40px;"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div onclick="doAct('watch')" class="wp-circle"&gt;&lt;svg viewBox="0 0 24 24"&gt;&lt;path d="M8 5v14l11-7z"/&gt;&lt;/svg&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div onclick="doAct('close')" class="wp-circle"&gt;&lt;svg viewBox="0 0 24 24"&gt;&lt;path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/&gt;&lt;/svg&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;script&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>const COLORS = ['#00aba9', '#a4c400', '#1ba1e2', '#6a00ff', '#d80073', '#e51400', '#fa6800', '#f0a30a'];</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>const ICON_VOL_UP = "M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z";</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>const ICON_VOL_OFF = "M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z";</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>const ICON_PLAY = "M8 5v14l11-7z";</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>const ICON_PAUSE = "M6 19h4V5H6v14zm8-14v14h4V5h-4z";</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>let state = {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>channels: [], epg: {},<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>favorites: JSON.parse(localStorage.getItem('met_favs') || '[]'),</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>playlists: JSON.parse(localStorage.getItem('met_v36') || '[]'),</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>activeIdx: parseInt(localStorage.getItem('met_act_idx_v36') || '0'),</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>accent: localStorage.getItem('met_ac_v36') || '#00aba9',</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>epgShift: 0, sel: null, activeCh: null, lastBaseTime: 0, lastRender: 0</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>};</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>let hlsApi = null;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function init() {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>applyTheme(state.accent);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>renderSwatches();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>renderSaved();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>checkPlaylists();</span></p>
+<p class="p2"><span class="s1"><span class="Apple-converted-space">            </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('gridCont').onscroll = (e) =&gt; {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>document.getElementById('timer').scrollLeft = e.target.scrollLeft;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>};</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.addEventListener('keydown', (e) =&gt; {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const pip = document.getElementById('pip-box');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>if (pip.classList.contains('expanded') &amp;&amp; state.activeCh) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>if (e.key === 'ArrowDown') switchChannel('next');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>if (e.key === 'ArrowUp') switchChannel('prev');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>});</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>// Listeners for Play/Pause changes from browser/buffering</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const v = document.getElementById('vid');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>v.onplay = updatePlayIcon;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>v.onpause = updatePlayIcon;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>setInterval(() =&gt; {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const nowTs = new Date().getTime();</span></p>
+<p class="p2"><span class="s1"><span class="Apple-converted-space">                </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>if (state.activeCh) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>const fresh = getNowPlaying(state.activeCh);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>if (!state.sel || state.sel.start !== fresh.start) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>state.sel = {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>t: fresh.t,</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>d: fresh.d,</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>start: fresh.start,</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>stop: fresh.stop,</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>u: state.activeCh.u,</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>l: state.activeCh.l,</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>chN: state.activeCh.n,</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>id: state.activeCh.id</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>};</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>document.getElementById('meta-title').innerText = state.sel.t;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>document.getElementById('meta-desc').innerText = state.sel.d;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>document.getElementById('meta-sub').innerText = state.sel.chN;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>const fsName = document.getElementById('fs-ch-name');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>if(fsName) fsName.innerText = state.sel.t;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>let pct = 0;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>if(state.sel &amp;&amp; state.sel.start &amp;&amp; state.sel.stop) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>const totalDur = state.sel.stop - state.sel.start;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>const elapsed = nowTs - state.sel.start;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>pct = (elapsed / totalDur) * 100;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>if(pct &lt; 0) pct = 0;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>if(pct &gt; 100) pct = 100;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>} else if (state.sel) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>pct = 100;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>document.getElementById('progress-bar').style.width = pct + "%";</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const currentBase = getBaseTime();</span></p>
+<p class="p2"><span class="s1"><span class="Apple-converted-space">                </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>if((currentBase !== state.lastBaseTime || nowTs - state.lastRender &gt; 60000) &amp;&amp; state.channels.length &gt; 0) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>renderGrid();<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>state.lastRender = nowTs;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>}, 1000);<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function getBaseTime() {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const now = new Date();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>now.setMinutes(now.getMinutes() &gt;= 30 ? 30 : 0);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>now.setSeconds(0); now.setMilliseconds(0);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>return now.getTime();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function switchChannel(dir) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const currentIdx = state.channels.findIndex(ch =&gt; ch.u === state.activeCh.u);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if (currentIdx === -1) return;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>let newIdx = dir === 'next' ? (currentIdx + 1) : (currentIdx - 1 + state.channels.length);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>newIdx %= state.channels.length;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>playChannel(state.channels[newIdx]);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function getNowPlaying(ch) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const now = new Date().getTime();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const progs = state.epg[ch.id] || state.epg[ch.n] || [];</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const current = progs.find(p =&gt; now &gt;= p.start &amp;&amp; now &lt; p.stop);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if (current) return current;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>return { t: ch.n, d: "Live Stream", start: now, stop: now + 3600000 };</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function playChannel(obj) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const liveData = getNowPlaying(obj);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const chName = obj.chN || obj.n || obj.t || "Unknown Channel";</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>state.sel = {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>t: liveData.t || chName,<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>u: obj.u,<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>l: obj.l,<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>chN: chName,<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>d: liveData.d || "Live Broadcast",</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>start: liveData.start,</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>stop: liveData.stop,</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>id: obj.id<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>};</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>state.activeCh = { n: chName, u: obj.u, l: obj.l, id: obj.id };</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('fs-logo').src = obj.l || '';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('fs-ch-name').innerText = state.sel.t;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('meta-title').innerText = state.sel.t;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('meta-sub').innerText = chName;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('meta-desc').innerText = state.sel.d;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const nowTs = new Date().getTime();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>let pct = 0;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(state.sel.start &amp;&amp; state.sel.stop) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const totalDur = state.sel.stop - state.sel.start;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const elapsed = nowTs - state.sel.start;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>pct = (elapsed / totalDur) * 100;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>if(pct&lt;0)pct=0; if(pct&gt;100)pct=100;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('progress-bar').style.width = pct + "%";</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const v = document.getElementById('vid');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>// ENSURE AUDIO IS ON</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>v.muted = false;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>v.volume = 1.0;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(Hls.isSupported()){<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>if(hlsApi) hlsApi.destroy();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>hlsApi = new Hls(); hlsApi.loadSource(obj.u); hlsApi.attachMedia(v); v.play();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>} else { v.src = obj.u; v.play(); }</span></p>
+<p class="p2"><span class="s1"><span class="Apple-converted-space">            </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>updateMuteIcon();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>updatePlayIcon();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>handlePlayerMouse();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function checkPlaylists() {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(state.playlists.length &gt; 0) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>if(state.activeIdx &gt;= state.playlists.length) state.activeIdx = 0;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>document.getElementById('empty-state').style.display = 'none';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const p = state.playlists[state.activeIdx];</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>state.epgShift = p.shift || 0;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>load(p.m, p.x);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>} else { view('guide'); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function showLoading(show) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const el = document.getElementById('loading-overlay');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const bar = document.getElementById('load-progress');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(show) { el.style.display = 'flex'; setTimeout(() =&gt; bar.style.width = '70%', 50); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>else { bar.style.width = '100%'; setTimeout(() =&gt; { el.style.display = 'none'; bar.style.width = '0%'; }, 500); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>async function load(m, x) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>showLoading(true);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>try {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const mText = await fetch(m).then(r =&gt; r.text());</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>state.channels = [];</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>mText.split('#EXTINF').forEach(chunk =&gt; {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>if(!chunk.includes('http')) return;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>state.channels.push({</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>n: chunk.split(',')[1]?.split('\n')[0].trim(),</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>u: chunk.split('\n').find(l =&gt; l.startsWith('http'))?.trim(),</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>l: chunk.match(/tvg-logo="([^"]+)"/i)?.[1],</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>id: chunk.match(/tvg-id="([^"]+)"/i)?.[1]</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>});</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>});</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>if(x) await fetchEPG(x);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>renderGrid();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>renderChannelGrids();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>view('guide');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>} catch(e) { console.error("Load Failed"); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>showLoading(false);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function parseEPGDate(tStr) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(!tStr || tStr.length &lt; 12) return null;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const y = parseInt(tStr.substring(0,4));</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const m = parseInt(tStr.substring(4,6)) - 1;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const d = parseInt(tStr.substring(6,8));</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const h = parseInt(tStr.substring(8,10));</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const min = parseInt(tStr.substring(10,12));</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>return new Date(y, m, d, h, min).getTime();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>async function fetchEPG(url) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>let txt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>try { txt = await fetch(url).then(r =&gt; r.text()); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>catch(e) {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>try { txt = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(url)).then(r =&gt; r.text()); }<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>catch(err) { return; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>try {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const xml = new DOMParser().parseFromString(txt, "text/xml");</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const progs = xml.getElementsByTagName('programme');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>state.epg = {};</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const shiftMs = state.epgShift * 3600000;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>for(let p of progs) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>const cid = p.getAttribute('channel');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>if(!state.epg[cid]) state.epg[cid] = [];</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>const startTs = parseEPGDate(p.getAttribute('start'));</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>const stopTs = parseEPGDate(p.getAttribute('stop'));</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>if(startTs) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>state.epg[cid].push({</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>t: p.getElementsByTagName('title')[0]?.textContent,</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>d: p.getElementsByTagName('desc')[0]?.textContent || "No description.",</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>start: startTs + shiftMs,<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>stop: (stopTs || (startTs + 3600000)) + shiftMs</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>});</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>} catch(e) {}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function renderGrid() {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const gridCont = document.getElementById('gridCont');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const scrollPos = gridCont.scrollLeft;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const list = document.getElementById('chList');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const matrix = document.getElementById('matrix');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const timer = document.getElementById('timer');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>list.innerHTML = ''; matrix.innerHTML = ''; timer.innerHTML = '';</span></p>
+<p class="p2"><span class="s1"><span class="Apple-converted-space">            </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const baseTime = getBaseTime();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const nowMs = new Date().getTime();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>state.lastBaseTime = baseTime;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const minutesToRender = 1440;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>matrix.style.gridTemplateColumns = `repeat(${minutesToRender}, var(--min-w))`;</span></p>
+<p class="p2"><span class="s1"><span class="Apple-converted-space">            </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>for(let i=0; i&lt;48; i++) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const sTime = new Date(baseTime + (i * 30 * 60000));</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const s = document.createElement('div'); s.className = 'time-slot';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>s.innerText = `${sTime.getHours()}:${sTime.getMinutes() === 0 ? '00' : '30'}`;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>timer.appendChild(s);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>state.channels.forEach((ch, idx) =&gt; {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const cDiv = document.createElement('div');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>cDiv.className = 'ch-item';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>cDiv.innerHTML = (ch.l ? `&lt;img src="${ch.l}"&gt;` : '') + `&lt;span&gt;${ch.n}&lt;/span&gt;`;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>cDiv.onclick = () =&gt; {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>playChannel(ch);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>};</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>cDiv.ondblclick = () =&gt; openModal(ch.n, "Live Stream", ch.u, ch.n, ch.l, null, null, ch.id);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>list.appendChild(cDiv);</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>let progs = state.epg[ch.id] || state.epg[ch.n] || [];</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>if(progs.length === 0) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>drawTile("Live Stream", "Direct Broadcast", 1, 1440, idx+1, ch.u, ch.n, ch.l, null, null, ch.id);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>} else {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>progs.sort((a, b) =&gt; (b.stop - b.start) - (a.stop - a.start));</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>progs.forEach(p =&gt; {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>if (p.stop &lt;= nowMs) return;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>const startMin = (p.start - baseTime) / 60000;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>const endMin = (p.stop - baseTime) / 60000;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>let colStart = Math.floor(startMin) + 1;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>let colEnd = Math.ceil(endMin) + 1;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>let span = colEnd - colStart;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>if (colStart &lt; 1) { span = span + (colStart - 1); colStart = 1; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>if (span &lt; 1) span = 1;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>if (span &gt; 0 &amp;&amp; colStart &lt;= 1440) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>drawTile(p.t, p.d, colStart, span, idx+1, ch.u, ch.n, ch.l, p.start, p.stop, ch.id);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>});</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>});</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>gridCont.scrollLeft = scrollPos;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function drawTile(t, d, col, span, row, u, chN, logo, start, stop, chId) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const el = document.createElement('div');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>el.className = 'prog-node'; el.tabIndex = 0;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>el.style.gridColumn = `${col} / span ${span}`;<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>el.style.gridRow = row;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(span &gt; 4) el.innerHTML = `&lt;strong&gt;${t}&lt;/strong&gt;`; else el.title = t;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>el.onclick = () =&gt; selectItem(t, u, logo, d, chN, el, start, stop, chId);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>el.ondblclick = () =&gt; openModal(t, d, u, chN, logo, start, stop, chId);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('matrix').appendChild(el);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function selectItem(t, u, l, d, chN, el, start, stop, chId) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('meta-title').innerText = t;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('meta-sub').innerText = chN;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('meta-desc').innerText = d;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>state.sel = { t, u, l, d, chN, start, stop, id: chId };</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>state.activeCh = { n: chN, u: u, l: l, id: chId };</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.querySelectorAll('.ch-item, .prog-node').forEach(x =&gt; x.classList.remove('selected'));</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(el) { el.classList.add('selected'); el.focus(); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function ribbonAction(act) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(act === 'info' &amp;&amp; state.sel) alert(`${state.sel.t}\n${state.sel.chN}\n\n${state.sel.d}`);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(act === 'refresh' &amp;&amp; state.playlists[state.activeIdx]) load(state.playlists[state.activeIdx].m, state.playlists[state.activeIdx].x);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(act === 'fav' &amp;&amp; state.activeCh) toggleFavorite(state.activeCh);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function toggleFavorite(ch) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const idx = state.favorites.findIndex(f =&gt; f.n === ch.n);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(idx &gt; -1) { state.favorites.splice(idx, 1); } else { state.favorites.push(ch); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>localStorage.setItem('met_favs', JSON.stringify(state.favorites));</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>renderChannelGrids();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function renderChannelGrids() {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const favGrid = document.getElementById('fav-grid');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const allGrid = document.getElementById('all-grid');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>favGrid.innerHTML = ''; allGrid.innerHTML = '';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('fav-section').style.display = state.favorites.length &gt; 0 ? 'block' : 'none';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>state.favorites.forEach(ch =&gt; { favGrid.appendChild(createChannelTile(ch)); });</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>state.channels.forEach(ch =&gt; {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>if(!state.favorites.find(f =&gt; f.n === ch.n)) allGrid.appendChild(createChannelTile(ch));</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>});</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function createChannelTile(ch) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const d = document.createElement('div');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>d.className = 'channel-tile';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>d.innerHTML = (ch.l ? `&lt;img src="${ch.l}"&gt;` : '') + `&lt;span&gt;${ch.n}&lt;/span&gt;`;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>d.onclick = () =&gt; { playChannel(ch); const pip = document.getElementById('pip-box'); pip.style.display = 'block'; pip.classList.add('expanded'); handlePlayerMouse(); };</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>return d;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function openModal(t, d, u, chN, logo, start, stop, chId) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>state.sel = { t, u, l: logo, d, chN, start, stop, id: chId };</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('modal-title').innerText = t;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('modal-overlay').style.display = 'flex';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function doAct(type) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('modal-overlay').style.display = 'none';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(type === 'watch' &amp;&amp; state.sel) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const pip = document.getElementById('pip-box');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>pip.style.display = 'block';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>pip.classList.add('expanded');<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>playChannel(state.sel);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>handlePlayerMouse();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function goFull() {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const pip = document.getElementById('pip-box');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(!pip.classList.contains('expanded')) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>pip.classList.add('expanded');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>if(state.sel) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>document.getElementById('fs-logo').src = state.sel.l || '';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>document.getElementById('fs-ch-name').innerText = state.sel.t || '';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>handlePlayerMouse();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function handlePlayerMouse() {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const pip = document.getElementById('pip-box');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(!pip.classList.contains('expanded')) return;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>pip.classList.add('ui-active');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>clearTimeout(state.uiTimer);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>state.uiTimer = setTimeout(() =&gt; pip.classList.remove('ui-active'), 3000);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function minimizePlayer(e) {<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>e.stopPropagation();<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const pip = document.getElementById('pip-box');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const inChannels = document.getElementById('channels-view').style.display === 'flex';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(inChannels) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>pip.style.display = 'none'; pip.classList.remove('expanded');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const v = document.getElementById('vid'); v.pause(); v.src = "";</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>} else { pip.classList.remove('expanded', 'ui-active'); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function togglePlay(e) { e.stopPropagation(); const v = document.getElementById('vid'); v.paused ? v.play() : v.pause(); }</span></p>
+<p class="p2"><span class="s1"><span class="Apple-converted-space">        </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>// NEW Helper to update icon</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function updatePlayIcon() {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const v = document.getElementById('vid');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const path = document.getElementById('play-icon-path');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>path.setAttribute('d', v.paused ? ICON_PLAY : ICON_PAUSE);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function toggleMute(e) { e.stopPropagation(); const v = document.getElementById('vid'); v.muted = !v.muted; updateMuteIcon(); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function updateMuteIcon() {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const v = document.getElementById('vid');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const icon = document.getElementById('mute-icon');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>icon.querySelector('path').setAttribute('d', v.muted ? ICON_VOL_OFF : ICON_VOL_UP);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function view(v) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const isG = v === 'guide'; const isC = v === 'channels'; const isS = v === 'settings'; const hasP = state.playlists.length &gt; 0;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('guide-view').style.display = (isG &amp;&amp; hasP) ? 'flex' : 'none';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('channels-view').style.display = (isC &amp;&amp; hasP) ? 'flex' : 'none';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('settings-view').style.display = isS ? 'block' : 'none';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('empty-state').style.display = (!hasP &amp;&amp; !isS) ? 'flex' : 'none';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('ribbon').style.display = (isG &amp;&amp; hasP) ? 'flex' : 'none';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('info-area').style.display = (isG &amp;&amp; hasP) ? 'flex' : 'none';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('tab-g').className = isG ? 'active' : '';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('tab-c').className = isC ? 'active' : '';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>document.getElementById('tab-s').className = isS ? 'active' : '';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const pip = document.getElementById('pip-box');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(isC || isS) { if(!pip.classList.contains('expanded')) pip.style.display = 'none'; }<span class="Apple-converted-space"> </span></span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>else if (isG &amp;&amp; state.sel &amp;&amp; hasP) { pip.style.display = 'block'; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function addPlaylist() {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const nameIn = document.getElementById('pl-name'), mIn = document.getElementById('m3u-in'), xIn = document.getElementById('xml-in'), sIn = document.getElementById('epg-shift');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(!mIn.value.trim()) return;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>state.playlists.push({ name: nameIn.value.trim() || "Playlist "+(state.playlists.length+1), m: mIn.value.trim(), x: xIn.value.trim(), shift: parseFloat(sIn.value||'0') });</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>state.activeIdx = state.playlists.length - 1;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>saveState(); renderSaved(); checkPlaylists(); view('guide');</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>nameIn.value = ''; mIn.value = ''; xIn.value = ''; sIn.value = '';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function setActivePlaylist(idx) { state.activeIdx = idx; saveState(); checkPlaylists(); renderSaved(); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function deletePlaylist(idx, e) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>e.stopPropagation(); state.playlists.splice(idx, 1);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(state.activeIdx &gt;= state.playlists.length) state.activeIdx = Math.max(0, state.playlists.length - 1);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>saveState(); renderSaved();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>if(state.playlists.length === 0) { document.getElementById('empty-state').style.display = 'flex'; document.getElementById('guide-view').style.display = 'none'; } else checkPlaylists();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function saveState() { localStorage.setItem('met_v36', JSON.stringify(state.playlists)); localStorage.setItem('met_act_idx_v36', state.activeIdx); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function exportData() { const dl = document.createElement('a'); dl.setAttribute("href", "data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(state))); dl.setAttribute("download", "metrotv_backup.json"); dl.click(); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function importData(input) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const file = input.files[0]; if(!file) return;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const reader = new FileReader();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>reader.onload = function(e) {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>try {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>const loaded = JSON.parse(e.target.result);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>state.playlists = loaded.playlists||[]; state.favorites = loaded.favorites||[]; state.activeIdx = loaded.activeIdx||0; state.accent = loaded.accent||'#00aba9';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>localStorage.setItem('met_v36', JSON.stringify(state.playlists)); localStorage.setItem('met_favs', JSON.stringify(state.favorites)); localStorage.setItem('met_act_idx_v36', state.activeIdx); localStorage.setItem('met_ac_v36', state.accent);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>location.reload();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>} catch(err) { alert("Invalid File"); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>}; reader.readAsText(file);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function applyTheme(c) { state.accent = c; document.documentElement.style.setProperty('--accent', c); localStorage.setItem('met_ac_v36', c); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function renderSwatches() { const s = document.getElementById('swatches'); COLORS.forEach(c =&gt; { const d = document.createElement('div'); d.className = 'swatch'; d.style.background = c; d.onclick = () =&gt; applyTheme(c); s.appendChild(d); }); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>function renderSaved() {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>const cont = document.getElementById('saved-lists'); cont.innerHTML = '';</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>state.playlists.forEach((p, i) =&gt; {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>const d = document.createElement('div'); d.className = `playlist-card ${i===state.activeIdx?'active-pl':''}`; d.onclick = () =&gt; setActivePlaylist(i);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>d.innerHTML = `&lt;span&gt;${p.name}&lt;/span&gt;&lt;button style="background:#b00; border:none; color:white; padding:8px 15px; cursor:pointer;" onclick="deletePlaylist(${i}, event)"&gt;DEL&lt;/button&gt;`; cont.appendChild(d);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>});</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>init();</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/script&gt;</span></p>
+<p class="p1"><span class="s1">&lt;/body&gt;</span></p>
+<p class="p1"><span class="s1">&lt;/html&gt;</span></p>
 </body>
 </html>
