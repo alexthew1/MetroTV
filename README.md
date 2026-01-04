@@ -12,7 +12,7 @@ MetroTV is a cross-platform IPTV application built with Electron, designed for w
 
 ## Screenshots
 
-**Main UI:**
+
 <a href="https://ibb.co/Spt5kMM"><img src="https://i.ibb.co/v83VNTT/Screenshot-2026-01-03-at-9-16-21-PM.png" alt="Screenshot-2026-01-03-at-9-16-21-PM" border="0"></a>
 
 ## Getting Started
