@@ -9,7 +9,7 @@ function createWindow() {
         width: 1280,
         height: 720,
         backgroundColor: '#000000',
-        // 'frame: true' is default, so we use the native OS title bar
+        show: false, // FIX 1: Don't show window immediately (prevents white flash/buffering look)
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -17,13 +17,24 @@ function createWindow() {
         }
     });
 
-    // Hide the standard "File, Edit, View" menu bar
     mainWindow.setMenuBarVisibility(false);
     mainWindow.loadFile('index.html');
+
+    // FIX 1 (Continued): Show window only when content is ready
+    mainWindow.once('ready-to-show', () => {
+        mainWindow.show();
+    });
 }
 
 app.whenReady().then(() => {
     createWindow();
+
+    // FIX 2: Re-create window on macOS when dock icon is clicked
+    app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+            createWindow();
+        }
+    });
 
     // IPC: Handle File Saving (Backup)
     ipcMain.handle('dialog:saveConfig', async (event, content) => {
