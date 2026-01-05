@@ -34,8 +34,8 @@ I am constantly working to transform MetroTV into a complete media hub but alas 
 * **Music Library:** A dedicated music category with full metadata support (including FLAC/MP4) for local and remote audio streams.
 
 ### 🎮 Input & Accessibility
-* **Controller Support:** Full navigation support for Xbox, PlayStation, and generic gamepads.
-* **Remote Control Integration:** Support for standard TV remotes and keyboard-only navigation for HTPC setups.
+* **Controller Support:** Full navigation support for Xbox and generic gamepads.
+* **Remote Control Integration:** Support for Windows PC compatiable TV remotes and keyboard-only navigation for HTPC setups.
 
 ### 📱 Future Platforms
 * **Mobile Ports:** A planned port using **React Native** to bring the MetroTV experience to Android and Android TV devices. *(Note: Research phase; requires rewriting large chunks of the code).*
