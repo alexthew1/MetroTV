@@ -8,7 +8,7 @@ MetroTV is a high-performance, cross-platform IPTV application built with Electr
 * **Metro UI Design:** Responsive, hardware-accelerated interface with customizable accent colors.
 * **Advanced EPG:** Full Electronic Program Guide support with live progress bars and detailed program metadata.
 * **Fluid Navigation:** Full-screen channel switching and smooth loading transitions.
-* **Cross-Platform:** Native-feel performance on Windows and macOS. (Linux is in the works)
+* **Cross-Platform:** Native-feeling performance on Windows and macOS. (Linux is in the works)
 
 ## Screenshots
 
