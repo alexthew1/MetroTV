@@ -1,19 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;">
+    <meta http-equiv="Content-Security-Policy"
+        content="script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;">
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <title>MetroTV</title>
 </head>
+
 <body>
 
     <div id="loading-overlay">
         <div class="load-box">
             <div class="load-text">LOADING PLAYLIST...</div>
-            <div class="load-bar-bg"><div id="load-progress" class="load-bar-fill"></div></div>
+            <div class="load-bar-bg">
+                <div id="load-progress" class="load-bar-fill"></div>
+            </div>
         </div>
     </div>
 
@@ -35,19 +40,25 @@
         <div id="fs-overlay"><img id="fs-logo" src=""><span id="fs-ch-name"></span></div>
         <video id="vid" autoplay></video>
         <div class="player-controls">
-            <div id="progress-container"><div id="progress-bar"></div></div>
+            <div id="progress-container">
+                <div id="progress-bar"></div>
+            </div>
             <div style="display:flex; gap:40px;">
                 <div class="wp-circle" id="btn-play">
                     <svg id="play-icon" viewBox="0 0 24 24">
-                        <path d="M8 5v14l11-7z"/>
+                        <path d="M8 5v14l11-7z" />
                     </svg>
                 </div>
                 <div class="wp-circle" id="btn-mute">
                     <svg id="mute-icon" viewBox="0 0 24 24">
-                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                        <path
+                            d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
                     </svg>
                 </div>
-                <div class="wp-circle" id="btn-mini"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></div>
+                <div class="wp-circle" id="btn-mini"><svg viewBox="0 0 24 24">
+                        <path
+                            d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                    </svg></div>
             </div>
         </div>
     </div>
@@ -75,15 +86,21 @@
     </div>
 
     <div class="ribbon-bar" id="ribbon">
-        <div class="ribbon-btn" data-act="info"><div class="ribbon-icon">i</div><span>info</span></div>
-        <div class="ribbon-btn" data-act="refresh"><div class="ribbon-icon">↻</div><span>refresh</span></div>
-        <div class="ribbon-btn" data-act="fav"><div class="ribbon-icon">★</div><span>favorite</span></div>
+        <div class="ribbon-btn" data-act="info">
+            <div class="ribbon-icon">i</div><span>info</span>
+        </div>
+        <div class="ribbon-btn" data-act="refresh">
+            <div class="ribbon-icon">↻</div><span>refresh</span>
+        </div>
+        <div class="ribbon-btn" data-act="fav">
+            <div class="ribbon-icon">★</div><span>favorite</span>
+        </div>
     </div>
 
     <div id="settings-view" style="display:none; padding:40px; overflow-y:auto;">
         <h2 style="font-weight:100; color:var(--accent);">appearance</h2>
         <div id="swatches" style="margin-bottom:40px"></div>
-        
+
         <h2 style="font-weight:100; color:var(--accent);">data management</h2>
         <div style="margin-bottom:40px">
             <div class="file-btn" id="btn-backup">Backup Config</div>
@@ -96,7 +113,7 @@
         <input type="text" id="xml-in" class="metro-input" placeholder="XML EPG URL">
         <input type="number" id="epg-shift" class="metro-input" placeholder="EPG Shift (Hours)">
         <button id="btn-save-pl" class="btn-metro">ADD PLAYLIST</button>
-        
+
         <h3 style="font-weight:100; color:var(--accent); margin-top:40px;">saved playlists</h3>
         <p style="color:#777; font-size:0.9rem;">click a playlist to load it</p>
         <div id="saved-lists" style="margin-top:20px; max-width:600px;"></div>
@@ -105,11 +122,17 @@
     <div id="modal-overlay">
         <h1 id="modal-title" style="font-weight:100; font-size:2.5rem; text-align:center;">Program</h1>
         <div style="display:flex; gap:45px; margin-top:40px;">
-            <div id="modal-watch" class="wp-circle"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
-            <div id="modal-close" class="wp-circle"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></div>
+            <div id="modal-watch" class="wp-circle"><svg viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                </svg></div>
+            <div id="modal-close" class="wp-circle"><svg viewBox="0 0 24 24">
+                    <path
+                        d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                </svg></div>
         </div>
     </div>
 
-    <script src="renderer.js"></script>
+    <script type="module" src="js/app.js"></script>
 </body>
+
 </html>
